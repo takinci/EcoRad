@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(wait)",
+      "Bash(npm run *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(./node_modules/.bin/vite build *)",
+      "Bash(npm --version)",
+      "Bash(cat /Users/tugbaakinci/.npm/_logs/2026-05-25T09_59_20_508Z-debug-0.log | grep \"error\\\\|warn\\\\|code\" | head -30)",
+      "Read(//Users/tugbaakinci/.npm/_logs/**)",
+      "Bash(xargs cat)",
+      "Bash(git -C /Users/tugbaakinci/Documents/GitHub/EcoRad status)",
+      "Bash(git -C /Users/tugbaakinci/Documents/GitHub/EcoRad diff --stat HEAD)"
+    ]
+  }
+}
