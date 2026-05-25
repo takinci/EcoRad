@@ -1,41 +1,45 @@
 # EcoRad
 
-EcoRad is a GitHub-ready sustainability intelligence web application for radiology departments. It estimates, tracks, visualizes, and explains environmental impact from imaging operations, infrastructure, consumables, patient workflows, and AI tool use.
+EcoRad is a deployable radiology sustainability intelligence web tool. It estimates, tracks, visualizes, and explains environmental impact from imaging operations, infrastructure, consumables, waste, patient workflow assumptions, and AI workloads.
 
-## Stack
+## What is included
 
-- Backend: Python FastAPI
-- Database: SQLite locally, PostgreSQL-ready SQLAlchemy models
-- Frontend: React, Vite, Chart.js
-- Deployment: Dockerfile and docker-compose
-- Tests: pytest
+- FastAPI backend with SQLite by default and PostgreSQL-ready `DATABASE_URL`
+- React + Vite frontend with Chart.js visualizations
+- Seed data for MRI, CT, X-ray, ultrasound, PACS/RIS, workstations, servers, consumables, waste, scenarios, and AI workload examples
+- Editable regional carbon-intensity assumptions
+- CSV and PDF export endpoints
+- Docker production build serving frontend and API from one container
+- Development Docker Compose for API and Vite hot reload
+- Unit tests for calculation logic
+- `sources.md` with grouped scientific and policy references
 
 ## Repository structure
 
 ```text
 ecorad/
-  backend/app/          FastAPI app, models, seed data, calculations
-  frontend/src/         React UI
-  frontend/public/      SVG logo and favicon
-  tests/                Unit tests for calculations
-  sources.md            References and assumption governance
+  backend/app/
+    calculations.py
+    config.py
+    database.py
+    main.py
+    models.py
+    seed.py
+  frontend/
+    public/
+    src/
+    index.html
+    package.json
+  tests/
+  .github/workflows/ci.yml
   Dockerfile
   docker-compose.yml
+  docker-compose.dev.yml
   requirements.txt
+  sources.md
 ```
 
-## Run locally with Docker
-
-```bash
-docker compose up --build
-```
-
-Open:
-
-- Frontend: http://localhost:5173
-- API: http://localhost:8000/docs
-
-## Run backend only
+## Run locally without Docker
 
 ```bash
 python -m venv .venv
@@ -44,7 +48,7 @@ pip install -r requirements.txt
 uvicorn backend.app.main:app --reload
 ```
 
-## Run frontend only
+In another terminal:
 
 ```bash
 cd frontend
@@ -52,45 +56,52 @@ npm install
 npm run dev
 ```
 
-## Run tests
+Open the frontend at `http://localhost:5173`. The API runs at `http://localhost:8000`.
+
+## Run production container
+
+```bash
+docker compose up --build
+```
+
+Open `http://localhost:8000`. The FastAPI app serves the compiled React app and the `/api/*` endpoints.
+
+## API endpoints
+
+- `GET /api/health`
+- `GET /api/meta`
+- `GET /api/departments`
+- `POST /api/departments`
+- `GET /api/equipment/{department_id}`
+- `GET /api/dashboard/{department_id}`
+- `GET /api/ai/{department_id}`
+- `POST /api/activity/{department_id}`
+- `POST /api/emission-factors`
+- `GET /api/scenarios/{department_id}`
+- `POST /api/scenarios/{department_id}`
+- `GET /api/export/{department_id}.csv`
+- `GET /api/export/{department_id}.pdf`
+
+## PostgreSQL deployment
+
+Set `DATABASE_URL` before starting the backend:
+
+```bash
+DATABASE_URL=postgresql+psycopg://user:password@host:5432/ecorad
+```
+
+Install the relevant PostgreSQL driver if needed, for example `psycopg[binary]`.
+
+## Important implementation notes
+
+The default values are intentionally editable assumptions, not fixed scientific claims. For formal ESG or regulatory reporting, replace assumptions with measured local metering, procurement, waste, cloud, and travel data. Each seeded assumption includes a citation field or source note.
+
+## Tests
 
 ```bash
 pytest
 ```
 
-## Main API endpoints
+## GitHub Actions
 
-- `GET /api/meta`
-- `GET /api/dashboard/1`
-- `GET /api/ai/1`
-- `GET /api/scenarios/1`
-- `POST /api/activity/1`
-- `GET /api/export/1.csv`
-
-## Calculation logic
-
-- `kWh = power in kW × time in hours`
-- `CO2e = kWh × carbon intensity in kgCO2e/kWh`
-- `Energy per scan = total modality kWh / scan count`
-- `Idle waste = idle kWh that could be avoided by standby/off policies`
-- `AI inference energy = GPU/CPU power × inference time × number of inferences × PUE`
-- `AI training energy = hardware power × training hours × PUE`
-
-## Branding assets included
-
-The app includes an inline EcoRad logo plus `frontend/public/logo.svg` and `frontend/public/favicon.svg`. PNG exports can be generated from the SVG using design tooling or a CI asset pipeline.
-
-## Cloud hosting notes
-
-Backend can be deployed to Azure App Service, AWS ECS/Fargate, Google Cloud Run, Render, Fly.io, or a Kubernetes cluster. For production:
-
-1. Replace SQLite with PostgreSQL.
-2. Set CORS to approved domains only.
-3. Add authentication and role-based access control.
-4. Store emission factor updates and assumptions under audit control.
-5. Add PDF generation to the export endpoint if formal reports are required.
-6. Add CI/CD checks for tests, linting, dependency scanning, and container scanning.
-
-## Important validation note
-
-EcoRad is a decision-support and reporting prototype. For regulated use, validate intended use, data provenance, assumptions, calculation logic, audit trail, access control, change control, and report generation according to the applicable quality system.
+The included workflow installs Python dependencies and runs tests on every push or pull request.
