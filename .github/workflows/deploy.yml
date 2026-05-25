@@ -28,11 +28,11 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --include=dev
         working-directory: frontend
 
       - name: Build
-        run: npm run build
+        run: npx vite build
         working-directory: frontend
 
       - uses: actions/configure-pages@v4

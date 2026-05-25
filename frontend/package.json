@@ -1,1 +1,18 @@
-{"scripts":{"dev":"vite","build":"vite build","preview":"vite preview"},"dependencies":{"@vitejs/plugin-react":"latest","vite":"latest","react":"latest","react-dom":"latest","chart.js":"latest","react-chartjs-2":"latest","lucide-react":"latest"},"devDependencies":{}}
+{
+  "name": "ecorad-frontend",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "chart.js": "^4.4.7",
+    "react-chartjs-2": "^5.2.0",
+    "lucide-react": "^0.511.0",
+    "vite": "^5.4.19",
+    "@vitejs/plugin-react": "^4.3.4"
+  }
+}

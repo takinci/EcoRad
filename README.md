@@ -3,9 +3,9 @@
 
 ![EcoRad Logo](./logo-ecorad.png)
 
-## Sustainable Intelligence for Radiology
+## Sustainable Radiology
 
-EcoRad is a radiology sustainability intelligence platform designed to help imaging departments estimate, visualize and reduce the environmental impact of imaging operations, AI workloads and healthcare infrastructure.
+EcoRad is a radiology sustainability platform designed to help imaging departments estimate, visualize and reduce the environmental impact of imaging operations, AI workloads and healthcare infrastructure.
 
 ---
 
