@@ -183,10 +183,8 @@ function computeAI(cloudProvider, region) {
 function Logo({dark = false}) {
   return (
     <div className="brand">
-      {dark
-        ? <span style={{background:'#263238', borderRadius:10, padding:'4px', display:'inline-flex'}}><img src="./logo.png" alt="EcoRad logo" style={{width:60, height:60, objectFit:'contain', display:'block'}}/></span>
-        : <img src="./logo.png" alt="EcoRad logo" style={{width:60, height:60, objectFit:'contain', mixBlendMode:'multiply'}}/>
-      }
+      <img src="./logo.png" alt="EcoRad logo" style={{width:46, height:46, objectFit:'contain', filter: dark ? 'brightness(1.8)' : 'none'}}/>
+      <div><strong>EcoRad</strong><span>Sustainable Intelligence for Radiology</span></div>
     </div>
   );
 }
