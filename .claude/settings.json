@@ -11,7 +11,11 @@
       "Read(//Users/tugbaakinci/.npm/_logs/**)",
       "Bash(xargs cat)",
       "Bash(git -C /Users/tugbaakinci/Documents/GitHub/EcoRad status)",
-      "Bash(git -C /Users/tugbaakinci/Documents/GitHub/EcoRad diff --stat HEAD)"
+      "Bash(git -C /Users/tugbaakinci/Documents/GitHub/EcoRad diff --stat HEAD)",
+      "Bash(git -C /Users/tugbaakinci/Documents/GitHub/EcoRad log --oneline -5)",
+      "Bash(git -C /Users/tugbaakinci/Documents/GitHub/EcoRad show HEAD --stat)",
+      "Bash(git -C /Users/tugbaakinci/Documents/GitHub/EcoRad show HEAD~1 --stat)",
+      "Bash(gh run *)"
     ]
   }
 }
