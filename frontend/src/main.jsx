@@ -2,7 +2,7 @@ import React, {useState, useMemo} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Bar, Doughnut} from 'react-chartjs-2';
 import {Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend} from 'chart.js';
-import {Leaf, Brain, Download, Activity, Gauge, TrendingDown} from 'lucide-react';
+import {Leaf, Brain, Download, Activity, Gauge, TrendingDown, Droplets, FileText, Trash2, Cpu, Car, TreePine, Plane, Factory} from 'lucide-react';
 import './styles.css';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
@@ -86,6 +86,23 @@ const CLOUD = {
   "Google Cloud":  {pue: 1.10, ci: 0.12}, // Google 2023 Environmental Report (lowest industry PUE)
 };
 
+// ── Resource & scope constants ────────────────────────────────────────────────
+
+// Cooling water: L per kWh. Google 2023 Env Report 0.45 L/kWh; typical data centre 1.5–2.5 L/kWh (ASHRAE)
+const WATER_PER_KWH = 1.8;
+
+// Embodied carbon amortised over hardware lifespan (kgCO₂e / month)
+// MRI 3T: ~70 tCO₂e manufacturing / 15-yr lifespan (ESR PP 2025, Radiol 10.1148/radiol.240398)
+// CT: ~20 tCO₂e / 12 yr; X-ray: ~4 tCO₂e / 10 yr; Ultrasound: ~1 tCO₂e / 7 yr
+const EMBODIED_KG_MO = {
+  "MRI": 389, "CT": 139, "X-ray": 33, "Ultrasound": 12, "PACS/RIS": 30, "Workstation": 5,
+};
+
+const PATIENT_KM_RT    = 20;   // avg round-trip patient travel km — replace with local data (ESR sustainability guidance)
+const CAR_CO2_KG_KM    = 0.17; // kgCO₂e/km average car (DEFRA 2023)
+const PAPER_G_PER_ENC  = 25;   // g paper per encounter in digital workflow (ESR Green Imaging)
+const HAZ_WASTE_G_SCAN = 50;   // g hazardous waste per imaging scan — contrast media disposal estimate
+
 const META = {
   profiles:     ["Hospital radiology", "Outpatient imaging center", "Research imaging lab", "Teleradiology / informatics-heavy workflow"],
   intendedUses: ["Estimate annual footprint", "Compare modalities", "Track monthly sustainability KPIs", "Evaluate AI tool impact", "Estimate savings from an intervention"],
@@ -101,23 +118,49 @@ const META = {
 const rnd = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
 
 function computeDashboard(region, timePeriod) {
-  const ci = CARBON_INTENSITY[region] ?? 0.25;
+  const ci   = CARBON_INTENSITY[region] ?? 0.25;
   const mult = TIME_MULT[timePeriod] ?? 1;
 
   const byEquipment = EQUIPMENT_BASE.map(eq => {
-    const kwh  = (eq.active_kw*eq.active_h + eq.idle_kw*eq.idle_h + eq.standby_kw*eq.standby_h + eq.off_kw*eq.off_h) * mult;
+    const kwh          = (eq.active_kw*eq.active_h + eq.idle_kw*eq.idle_h + eq.standby_kw*eq.standby_h + eq.off_kw*eq.off_h) * mult;
+    const activeKwh    = eq.active_kw * eq.active_h * mult;
+    const idleKwh      = (eq.idle_kw * eq.idle_h + eq.standby_kw * eq.standby_h) * mult;
     const kgco2e       = kwh * ci;
     const idleWasteKwh = eq.idle_kw * eq.avoidable_idle_h * mult;
     const scans        = eq.scans * mult;
-    return {equipment: eq.name, modality: eq.modality, kwh: rnd(kwh), kgco2e: rnd(kgco2e),
-            scans, energyPerScan: rnd(kwh / scans, 3), idleWasteKwh: rnd(idleWasteKwh), confidence:"estimated"};
+    return {equipment: eq.name, modality: eq.modality,
+            kwh: rnd(kwh), activeKwh: rnd(activeKwh), idleKwh: rnd(idleKwh),
+            kgco2e: rnd(kgco2e), scans, energyPerScan: rnd(kwh / scans, 3),
+            idleWasteKwh: rnd(idleWasteKwh), confidence: "estimated"};
   });
 
-  const totalKwh   = byEquipment.reduce((s, e) => s + e.kwh, 0);
-  const totalCo2   = byEquipment.reduce((s, e) => s + e.kgco2e, 0);
-  const totalScans = byEquipment.reduce((s, e) => s + e.scans, 0);
-  const totalIdle  = byEquipment.reduce((s, e) => s + e.idleWasteKwh, 0);
-  const label      = TIME_LABEL[timePeriod];
+  const totalKwh       = byEquipment.reduce((s, e) => s + e.kwh, 0);
+  const totalActiveKwh = byEquipment.reduce((s, e) => s + e.activeKwh, 0);
+  const totalIdleKwh   = byEquipment.reduce((s, e) => s + e.idleKwh, 0);
+  const totalCo2       = byEquipment.reduce((s, e) => s + e.kgco2e, 0);
+  const totalScans     = byEquipment.reduce((s, e) => s + e.scans, 0);
+  const totalIdle      = byEquipment.reduce((s, e) => s + e.idleWasteKwh, 0);
+  const label          = TIME_LABEL[timePeriod];
+
+  // Patient-generating imaging scans only (excludes PACS/workstation virtual entries)
+  const imagingScans = EQUIPMENT_BASE
+    .filter(e => ["MRI","CT","X-ray","Ultrasound"].includes(e.modality))
+    .reduce((s, e) => s + e.scans * mult, 0);
+
+  // GHG Protocol scope breakdown
+  // Scope 1: direct fuel/gas estimated at 8% of Scope 2 (backup generators, medical gas) — McKee 2024
+  // Scope 3 embodied: hardware manufacturing amortised (ESR PP 2025)
+  // Scope 3 travel: patient travel at PATIENT_KM_RT × CAR_CO2_KG_KM (DEFRA 2023)
+  const scope2Kg       = rnd(totalCo2);
+  const scope1Kg       = rnd(scope2Kg * 0.08);
+  const scope3EmbKg    = rnd(EQUIPMENT_BASE.reduce((s, eq) => s + (EMBODIED_KG_MO[eq.modality] ?? 0) * mult, 0));
+  const scope3TravelKg = rnd(imagingScans * PATIENT_KM_RT * CAR_CO2_KG_KM);
+  const scope3Kg       = rnd(scope3EmbKg + scope3TravelKg);
+
+  // Resource metrics
+  const waterLitres  = rnd(totalKwh * WATER_PER_KWH, 0);
+  const paperKg      = rnd(imagingScans * PAPER_G_PER_ENC / 1000, 1);
+  const hazardousKg  = rnd(imagingScans * HAZ_WASTE_G_SCAN / 1000, 1);
 
   return {
     byEquipment,
@@ -127,11 +170,18 @@ function computeDashboard(region, timePeriod) {
       tonnesCo2e: rnd(totalCo2 / 1000, 3),
       energyPerScan: rnd(totalKwh / totalScans, 3),
       idleWasteKwh: rnd(totalIdle), label,
+      activeKwh: rnd(totalActiveKwh), idleKwh: rnd(totalIdleKwh),
+      activePct: totalKwh > 0 ? rnd(totalActiveKwh / totalKwh * 100, 1) : 0,
+      idlePct:   totalKwh > 0 ? rnd(totalIdleKwh   / totalKwh * 100, 1) : 0,
     },
+    scopes:    {scope1Kg, scope2Kg, scope3EmbKg, scope3TravelKg, scope3Kg, imagingScans},
+    resources: {waterLitres, paperKg, hazardousKg},
     equivalencies: {
-      car_km:        rnd(totalCo2 / 0.17,    0),
-      phone_charges: rnd(totalKwh / 0.012,   0),
-      household_years: rnd(totalKwh / 3500,  2),
+      car_km:          rnd(totalCo2 / 0.17,   0),
+      phone_charges:   rnd(totalKwh / 0.012,  0),
+      household_years: rnd(totalKwh / 3500,   2),
+      trees_year:      rnd(totalCo2 / 21,     1), // 1 tree absorbs ~21 kgCO₂/yr
+      flights_short:   rnd(totalCo2 / 255,    1), // avg short-haul economy seat ~255 kgCO₂ (ICAO 2023)
     },
     ci, region, timePeriod,
   };
@@ -318,29 +368,82 @@ function App() {
       {page==='dashboard' && (
         <main>
           <h1>Demo Academic Radiology <span className="badge">{settings.region}</span> <span className="badge">{settings.timePeriod}</span></h1>
-          <div className="cards">
-            <Card icon={<Gauge/>}    title={`Energy ${dash.totals.label}`}        value={`${dash.totals.mwh} MWh`}          sub="Total electricity from scanners, PACS, workstations, and servers."/>
-            <Card icon={<Leaf/>}     title={`Carbon ${dash.totals.label}`}         value={`${dash.totals.tonnesCo2e} tCO₂e`} sub={`Scope 2 at ${dash.ci} kgCO₂e/kWh (${settings.region}).`}/>
-            <Card icon={<Activity/>} title="Per scan"                              value={`${dash.totals.energyPerScan} kWh`} sub="Modality benchmarking and protocol optimisation."/>
-            <Card icon={<TrendingDown/>} title={`Avoidable idle ${dash.totals.label}`} value={`${dash.totals.idleWasteKwh} kWh`}  sub="Opportunity from standby or off policies."/>
-          </div>
-          <div className="charts">
-            <section><h2>Energy by equipment</h2><Bar data={chartEnergy}/></section>
-            <section><h2>Carbon by equipment</h2><Doughnut data={chartCo2}/></section>
-          </div>
-          <section>
-            <h2>Top 5 improvement opportunities</h2>
-            {dash.topOpportunities.map((x,i) => (
-              <div key={i} className="row">
-                <b>{x.equipment}</b>
-                <span>{x.idleWasteKwh} kWh avoidable idle{dash.totals.label}</span>
-                <small>{x.confidence}</small>
-              </div>
-            ))}
+
+          {/* ── 1. Energy consumption ── */}
+          <section style={{background:'none',boxShadow:'none',padding:0}}>
+            <h2 style={{marginBottom:12}}>1. Energy consumption</h2>
+            <div className="cards">
+              <Card icon={<Gauge/>}       title={`Total electricity ${dash.totals.label}`}   value={`${dash.totals.mwh} MWh`}                sub="All scanners, PACS, workstations, and servers."/>
+              <Card icon={<Activity/>}    title={`Active scanning ${dash.totals.label}`}      value={`${dash.totals.activeKwh.toLocaleString()} kWh`} sub={`${dash.totals.activePct}% of total — energy during actual scan acquisition.`}/>
+              <Card icon={<TrendingDown/>} title={`Idle + standby ${dash.totals.label}`}      value={`${dash.totals.idleKwh.toLocaleString()} kWh`}   sub={`${dash.totals.idlePct}% of total — between scans and overnight. Primary optimisation target.`}/>
+              <Card icon={<TrendingDown/>} title={`Avoidable idle ${dash.totals.label}`}      value={`${dash.totals.idleWasteKwh.toLocaleString()} kWh`} sub="Recoverable by standby / power-off policies."/>
+            </div>
+            <div className="cards" style={{marginTop:12}}>
+              <Card icon={<Activity/>}    title="Energy per imaging scan"                     value={`${dash.totals.energyPerScan} kWh`}       sub="Total ÷ all scans. Use for modality benchmarking and protocol optimisation."/>
+            </div>
           </section>
-          <section>
-            <h2>What does this mean?</h2>
-            <p>Equivalent to <strong>{dash.equivalencies.car_km.toLocaleString()}</strong> car km, <strong>{dash.equivalencies.phone_charges.toLocaleString()}</strong> phone charges, and <strong>{dash.equivalencies.household_years}</strong> household electricity years {dash.totals.label}.</p>
+
+          {/* ── 2. Carbon emissions ── */}
+          <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
+            <h2 style={{marginBottom:12}}>2. Carbon emissions — GHG Protocol scopes</h2>
+            <p className="note" style={{marginBottom:12}}>Scope 1: direct fuel (estimated). Scope 2: purchased electricity (calculated). Scope 3: hardware embodied carbon + patient travel (estimated). All {dash.totals.label}.</p>
+            <div className="cards">
+              <Card icon={<Factory/>}    title="Scope 1 — Direct"             value={`${rnd(dash.scopes.scope1Kg/1000,3)} tCO₂e`}       sub="Backup generators, medical gas. Estimated 8% of Scope 2 (McKee 2024)."/>
+              <Card icon={<Gauge/>}      title="Scope 2 — Electricity"        value={`${dash.totals.tonnesCo2e} tCO₂e`}                  sub={`Grid at ${dash.ci} kgCO₂e/kWh (${settings.region}). Primary measured scope.`}/>
+              <Card icon={<Cpu/>}        title="Scope 3 — Embodied carbon"    value={`${rnd(dash.scopes.scope3EmbKg/1000,3)} tCO₂e`}    sub="Hardware manufacturing amortised over lifespan. Extend lifetime to reduce."/>
+              <Card icon={<Car/>}        title="Scope 3 — Patient travel"     value={`${rnd(dash.scopes.scope3TravelKg/1000,3)} tCO₂e`} sub={`${dash.scopes.imagingScans.toLocaleString()} scans × ${PATIENT_KM_RT} km avg round trip at ${CAR_CO2_KG_KM} kgCO₂e/km.`}/>
+            </div>
+          </section>
+
+          {/* ── Charts ── */}
+          <div className="charts" style={{marginTop:28}}>
+            <section><h2>Energy by equipment</h2><Bar data={chartEnergy}/></section>
+            <section><h2>Carbon (Scope 2) by equipment</h2><Doughnut data={chartCo2}/></section>
+          </div>
+
+          {/* ── 3. Infrastructure ── */}
+          <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
+            <h2 style={{marginBottom:12}}>3. Infrastructure and hardware</h2>
+            <div className="cards">
+              <Card icon={<Cpu/>}         title="Top idle waster"               value={dash.topOpportunities[0]?.equipment ?? '—'}               sub={`${dash.topOpportunities[0]?.idleWasteKwh.toLocaleString()} kWh avoidable idle${dash.totals.label}. Highest single-unit saving.`}/>
+              <Card icon={<Activity/>}    title="Hardware lifespans"             value="MRI 15 yr / CT 12 yr"                                      sub="X-ray 10 yr, Ultrasound 7 yr. Extend to reduce Scope 3 embodied carbon."/>
+              <Card icon={<TrendingDown/>} title="Carbon intensity"              value={`${dash.ci} kgCO₂e/kWh`}                                  sub={`${settings.region} grid. Move to renewable tariff or lower-carbon region to cut Scope 2.`}/>
+              <Card icon={<Gauge/>}       title="Scope 3 total"                  value={`${rnd(dash.scopes.scope3Kg/1000,3)} tCO₂e`}              sub="Embodied + patient travel combined. Often larger than Scope 2 in a full lifecycle view."/>
+            </div>
+            <section style={{marginTop:12}}>
+              <h2>Top 5 improvement opportunities — idle energy</h2>
+              {dash.topOpportunities.map((x,i) => (
+                <div key={i} className="row">
+                  <b>{x.equipment}</b>
+                  <span>{x.idleWasteKwh.toLocaleString()} kWh avoidable idle{dash.totals.label}</span>
+                  <small>{x.confidence}</small>
+                </div>
+              ))}
+            </section>
+          </section>
+
+          {/* ── 4. Resource metrics ── */}
+          <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
+            <h2 style={{marginBottom:12}}>4. Resource footprint</h2>
+            <p className="note" style={{marginBottom:12}}>Replace defaults with procurement records, waste manifests, and water bills for publication-quality figures.</p>
+            <div className="cards">
+              <Card icon={<Droplets/>}   title={`Water footprint ${dash.totals.label}`}       value={`${dash.resources.waterLitres.toLocaleString()} L`} sub={`${WATER_PER_KWH} L/kWh cooling estimate. Google Cloud 0.45 L/kWh; local servers ~2 L/kWh.`}/>
+              <Card icon={<FileText/>}   title={`Paper consumption ${dash.totals.label}`}     value={`${dash.resources.paperKg} kg`}                     sub={`~${PAPER_G_PER_ENC}g/encounter digital workflow. Full film-based: ~200g. (ESR Green Imaging)`}/>
+              <Card icon={<Trash2/>}     title={`Hazardous waste ${dash.totals.label}`}       value={`${dash.resources.hazardousKg} kg`}                 sub="Contrast media disposal, sharps. Replace with waste manifest data."/>
+              <Card icon={<Leaf/>}       title={`Total Scope 2 carbon ${dash.totals.label}`}  value={`${dash.totals.tonnesCo2e} tCO₂e`}                 sub="All electricity-derived emissions. Primary target for renewable energy procurement."/>
+            </div>
+          </section>
+
+          {/* ── 5. Equivalencies ── */}
+          <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
+            <h2 style={{marginBottom:12}}>5. Real-world equivalencies</h2>
+            <div className="cards">
+              <Card icon={<Car/>}        title="Car km equivalent"      value={dash.equivalencies.car_km.toLocaleString()}           sub="km driven by average petrol car at 0.17 kgCO₂/km (DEFRA 2023)."/>
+              <Card icon={<Activity/>}   title="Phone charges"          value={dash.equivalencies.phone_charges.toLocaleString()}    sub="Smartphone full charges at 12 Wh each."/>
+              <Card icon={<TreePine/>}   title="Tree-years to offset"   value={dash.equivalencies.trees_year.toLocaleString()}       sub="Trees growing for 1 year absorbing ~21 kgCO₂/yr each."/>
+              <Card icon={<Plane/>}      title="Short-haul flights"     value={dash.equivalencies.flights_short.toLocaleString()}    sub="Economy passenger seats at 255 kgCO₂ each (ICAO 2023)."/>
+            </div>
+            <p className="note" style={{marginTop:12}}>Also equivalent to <strong>{dash.equivalencies.household_years}</strong> household electricity years (3 500 kWh/yr average).</p>
           </section>
         </main>
       )}
