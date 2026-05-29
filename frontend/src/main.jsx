@@ -372,7 +372,7 @@ function computeAI(cloudProvider, region, modelSize, precision, architecture) {
 function Logo({dark = false}) {
   return (
     <div className="brand">
-      <span className="logoBox"><img src="./logo.png" alt="EcoRad logo" style={{width:52, height:52, objectFit:'contain', display:'block'}}/></span>
+      <img src="./logo.png" alt="EcoRad logo" style={{width:52, height:52, objectFit:'contain'}}/>
       <div><strong>EcoRad</strong><span>Sustainable Intelligence for Radiology</span></div>
     </div>
   );
