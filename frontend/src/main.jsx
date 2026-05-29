@@ -437,6 +437,7 @@ function App() {
   };
 
   const pages = ['landing','input','dashboard','ai','scenario','export'];
+  const PAGE_LABELS = {ai: 'AI'}; // override capitalize for abbreviations
 
   return (
     <>
@@ -444,7 +445,7 @@ function App() {
         <Logo/>
         <nav>
           {pages.map(p => (
-            <button key={p} className={page===p?'on':''} onClick={()=>setPage(p)}>{p}</button>
+            <button key={p} className={page===p?'on':''} onClick={()=>setPage(p)}>{PAGE_LABELS[p] ?? p}</button>
           ))}
         </nav>
       </header>
@@ -481,7 +482,9 @@ function App() {
             <p>Carbon intensity for <strong>{settings.region}</strong>: <strong>{(CARBON_INTENSITY[settings.region]??0.25)} kgCO₂e/kWh</strong> <span className="note">— Our World in Data, 2022–2023 national average. Replace with local utility data for higher accuracy.</span></p>
             <p>Showing <strong>{settings.timePeriod.toLowerCase()}</strong> figures — multiplier ×{TIME_MULT[settings.timePeriod]}</p>
             <p className="note">Equipment power defaults: MRI 30 kW active (Heye et al., JMRI 2023 · DOI 10.1002/jmri.28994); CT 60 kW active (Acra 2024 · DOI 10.1016/j.acra.2024.05.004). See <a href="https://github.com/takinci/EcoRad/blob/main/sources.md" style={{color:'#2E7D32'}} target="_blank" rel="noreferrer">sources.md</a> for all citations.</p>
-            <button onClick={()=>setPage('dashboard')} style={{marginTop:16}}>View dashboard →</button>
+            <button onClick={()=>setPage(settings.metricType==='AI net impact' ? 'ai' : 'dashboard')} style={{marginTop:16}}>
+              View {settings.metricType==='AI net impact' ? 'AI dashboard' : 'dashboard'} →
+            </button>
           </div>
         </main>
       )}
@@ -489,11 +492,17 @@ function App() {
       {/* ── Dashboard ── */}
       {page==='dashboard' && (
         <main>
-          <h1>Demo Academic Radiology <span className="badge">{settings.region}</span> <span className="badge">{settings.timePeriod}</span></h1>
+          <h1>{settings.profile} <span className="badge">{settings.region}</span> <span className="badge">{settings.timePeriod}</span></h1>
+          {settings.metricType !== 'Energy' && (
+            <p className="note" style={{marginBottom:16}}>
+              Showing all metrics — <strong>{settings.metricType}</strong> sections highlighted.{' '}
+              {settings.intendedUse !== 'Estimate annual footprint' && <>Intended use: <em>{settings.intendedUse}</em>.</>}
+            </p>
+          )}
 
           {/* ── 1. Energy consumption ── */}
           <section style={{background:'none',boxShadow:'none',padding:0}}>
-            <h2 style={{marginBottom:12}}>1. Energy consumption</h2>
+            <h2 style={{marginBottom:12,color: settings.metricType==='Energy' ? '#1b5e20' : undefined}}>1. Energy consumption {settings.metricType==='Energy' && <span className="badge">viewing</span>}</h2>
             <div className="cards">
               <Card icon={<Gauge/>}       title={`Total electricity ${dash.totals.label}`}   value={`${dash.totals.mwh} MWh`}                sub="All scanners, PACS, workstations, and servers."/>
               <Card icon={<Activity/>}    title={`Active scanning ${dash.totals.label}`}      value={`${dash.totals.activeKwh.toLocaleString()} kWh`} sub={`${dash.totals.activePct}% of total — energy during actual scan acquisition.`}/>
@@ -507,7 +516,7 @@ function App() {
 
           {/* ── 2. Carbon emissions ── */}
           <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
-            <h2 style={{marginBottom:12}}>2. Carbon emissions — GHG Protocol scopes</h2>
+            <h2 style={{marginBottom:12,color: settings.metricType==='Carbon' ? '#1b5e20' : undefined}}>2. Carbon emissions — GHG Protocol scopes {settings.metricType==='Carbon' && <span className="badge">viewing</span>}</h2>
             <p className="note" style={{marginBottom:12}}>Scope 1: direct fuel (estimated). Scope 2: purchased electricity (calculated). Scope 3: hardware embodied carbon + patient travel (estimated). All {dash.totals.label}.</p>
             <div className="cards">
               <Card icon={<Factory/>}    title="Scope 1 — Direct"             value={`${rnd(dash.scopes.scope1Kg/1000,3)} tCO₂e`}       sub="Backup generators, medical gas. Estimated 8% of Scope 2 (McKee 2024)."/>
@@ -546,7 +555,7 @@ function App() {
 
           {/* ── 4. Resource metrics ── */}
           <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
-            <h2 style={{marginBottom:12}}>4. Resource footprint</h2>
+            <h2 style={{marginBottom:12,color: settings.metricType==='Water' ? '#1b5e20' : undefined}}>4. Resource footprint {settings.metricType==='Water' && <span className="badge">viewing</span>}</h2>
             <p className="note" style={{marginBottom:12}}>Replace defaults with procurement records, waste manifests, and water bills for publication-quality figures.</p>
             <div className="cards">
               <Card icon={<Droplets/>}   title={`Water footprint ${dash.totals.label}`}       value={`${dash.resources.waterLitres.toLocaleString()} L`} sub={`${WATER_PER_KWH} L/kWh cooling estimate. Google Cloud 0.45 L/kWh; local servers ~2 L/kWh.`}/>
