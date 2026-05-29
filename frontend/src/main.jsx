@@ -1,4 +1,4 @@
-import React, {useState, useMemo} from 'react';
+import React, {useState, useMemo, useEffect} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Bar, Doughnut} from 'react-chartjs-2';
 import {Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend} from 'chart.js';
@@ -27,23 +27,42 @@ const CARBON_INTENSITY = {
 const TIME_MULT = {Monthly: 1, Quarterly: 3, Annual: 12};
 const TIME_LABEL = {Monthly: "/mo", Quarterly: "/qtr", Annual: "/yr"};
 
-// Monthly power-mode data per equipment. All active_kw values are literature-derived defaults;
-// replace with scanner logs, OEM data sheets, or smart-meter readings.
-//
-// MRI:  active 30 kW — Heye et al. JMRI 2023 (DOI: 10.1002/jmri.28994) reports mean 30.1 kW for 3T;
-//        supported by Radiol 2024 (10.1148/radiol.243453) and EurRad 2024 (10.1007/s00330-024-11056-0).
-//        idle ~50 % of active per Herrmann 2012 (Stanford PDF); standby ~15 kW via cryocooler load (Neurad 10.1016/j.neurad.2023.12.001).
-// CT:   active 60 kW mid-range — Acra 2024 (10.1016/j.acra.2024.05.004) and CJRS 2022 (10.1177/08465371221133074)
-//        report 40–80 kW for modern MDCT; AJR 2023 (10.2214/AJR.23.30189) confirms idle significance.
-// X-ray/Ultrasound/PACS/WS: estimated from Radiol 2024 (10.1148/radiol.240398) multi-modality IT survey.
-const EQUIPMENT_BASE = [
-  {name:"MRI 3T A",              modality:"MRI",         active_kw:30,  idle_kw:15,  standby_kw:5,   off_kw:0.5,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:1200},
-  {name:"CT Scanner A",          modality:"CT",          active_kw:60,  idle_kw:8,   standby_kw:3,   off_kw:0.2,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:1800},
-  {name:"Digital X-ray Room",    modality:"X-ray",       active_kw:12,  idle_kw:2,   standby_kw:0.6, off_kw:0.1,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:2500},
-  {name:"Ultrasound Fleet",      modality:"Ultrasound",  active_kw:1.5, idle_kw:0.4, standby_kw:0.1, off_kw:0.02, active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:2500},
-  {name:"PACS Storage",          modality:"PACS/RIS",    active_kw:4,   idle_kw:4,   standby_kw:4,   off_kw:4,    active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:2500},
-  {name:"Reporting Workstations", modality:"Workstation", active_kw:2,  idle_kw:0.8, standby_kw:0.2, off_kw:0.05, active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:2500},
-];
+// Equipment fleets per department profile. Power values from literature (see sources.md).
+// Hours are typical monthly operational patterns per profile type.
+const EQUIPMENT_PROFILES = {
+  "Hospital radiology": [
+    {name:"MRI 3T",               modality:"MRI",         active_kw:30,  idle_kw:15,  standby_kw:5,   off_kw:0.5,  active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:120, scans:1200},
+    {name:"CT Scanner",           modality:"CT",          active_kw:60,  idle_kw:8,   standby_kw:3,   off_kw:0.2,  active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:120, scans:1800},
+    {name:"Digital X-ray Room",   modality:"X-ray",       active_kw:12,  idle_kw:2,   standby_kw:0.6, off_kw:0.1,  active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:120, scans:2500},
+    {name:"Ultrasound Fleet",     modality:"Ultrasound",  active_kw:1.5, idle_kw:0.4, standby_kw:0.1, off_kw:0.02, active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:120, scans:2500},
+    {name:"PACS Storage",         modality:"PACS/RIS",    active_kw:4,   idle_kw:4,   standby_kw:4,   off_kw:4,    active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:120, scans:2500},
+    {name:"Reporting Workstations",modality:"Workstation", active_kw:2,  idle_kw:0.8, standby_kw:0.2, off_kw:0.05, active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:120, scans:2500},
+  ],
+  "Outpatient imaging center": [
+    {name:"MRI 1.5T",             modality:"MRI",         active_kw:22,  idle_kw:12,  standby_kw:4,   off_kw:0.5,  active_h:120, idle_h:260, standby_h:280, off_h:84,  avoidable_idle_h:100, scans:800},
+    {name:"CT Scanner",           modality:"CT",          active_kw:45,  idle_kw:6,   standby_kw:2,   off_kw:0.2,  active_h:100, idle_h:220, standby_h:300, off_h:124, avoidable_idle_h:80,  scans:1000},
+    {name:"Digital X-ray",        modality:"X-ray",       active_kw:10,  idle_kw:1.5, standby_kw:0.5, off_kw:0.1,  active_h:120, idle_h:240, standby_h:280, off_h:104, avoidable_idle_h:80,  scans:1800},
+    {name:"Ultrasound (×3)",      modality:"Ultrasound",  active_kw:4.5, idle_kw:1.2, standby_kw:0.3, off_kw:0.06, active_h:140, idle_h:260, standby_h:260, off_h:84,  avoidable_idle_h:100, scans:3000},
+    {name:"PACS Storage",         modality:"PACS/RIS",    active_kw:2,   idle_kw:2,   standby_kw:2,   off_kw:2,    active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:60,  scans:2500},
+    {name:"Workstations (×4)",    modality:"Workstation", active_kw:0.8, idle_kw:0.3, standby_kw:0.08,off_kw:0.02, active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:100, scans:2500},
+  ],
+  "Research imaging lab": [
+    {name:"MRI 7T Research",      modality:"MRI",         active_kw:45,  idle_kw:22,  standby_kw:8,   off_kw:1,    active_h:120, idle_h:320, standby_h:260, off_h:44,  avoidable_idle_h:150, scans:300},
+    {name:"MRI 3T Clinical",      modality:"MRI",         active_kw:30,  idle_kw:15,  standby_kw:5,   off_kw:0.5,  active_h:100, idle_h:280, standby_h:280, off_h:84,  avoidable_idle_h:130, scans:500},
+    {name:"CT Research Unit",     modality:"CT",          active_kw:55,  idle_kw:7,   standby_kw:3,   off_kw:0.2,  active_h:80,  idle_h:200, standby_h:300, off_h:164, avoidable_idle_h:80,  scans:400},
+    {name:"Ultrasound",           modality:"Ultrasound",  active_kw:1.5, idle_kw:0.4, standby_kw:0.1, off_kw:0.02, active_h:80,  idle_h:200, standby_h:300, off_h:164, avoidable_idle_h:60,  scans:300},
+    {name:"Research PACS",        modality:"PACS/RIS",    active_kw:6,   idle_kw:6,   standby_kw:6,   off_kw:6,    active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:80,  scans:1500},
+    {name:"Analysis Workstations (×8)",modality:"Workstation",active_kw:3.2,idle_kw:1.6,standby_kw:0.4,off_kw:0.08,active_h:200, idle_h:350, standby_h:174, off_h:20,  avoidable_idle_h:80,  scans:2000},
+  ],
+  "Teleradiology / informatics-heavy workflow": [
+    {name:"Remote PACS (primary)",modality:"PACS/RIS",    active_kw:8,   idle_kw:8,   standby_kw:8,   off_kw:8,    active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:60,  scans:5000},
+    {name:"Archive Storage",      modality:"PACS/RIS",    active_kw:3,   idle_kw:3,   standby_kw:3,   off_kw:3,    active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:30,  scans:5000},
+    {name:"AI Inference Servers", modality:"PACS/RIS",    active_kw:5,   idle_kw:5,   standby_kw:5,   off_kw:5,    active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:60,  scans:5000},
+    {name:"Workstations (×12)",   modality:"Workstation", active_kw:2.4, idle_kw:1.0, standby_kw:0.24,off_kw:0.06, active_h:160, idle_h:280, standby_h:250, off_h:54,  avoidable_idle_h:120, scans:5000},
+  ],
+};
+// Backwards-compatible alias used by INTERVENTIONS notes
+const EQUIPMENT_BASE = EQUIPMENT_PROFILES["Hospital radiology"];
 
 // Monthly kWh savings per intervention — conservative departmental estimates.
 // Sources: McKee 2024 (10.1148/radiol.240219), ESR Position Paper 2025, JMRI 2023 (10.1002/jmri.28994),
@@ -186,11 +205,12 @@ const META = {
 // ── Calculation functions ─────────────────────────────────────────────────────
 const rnd = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
 
-function computeDashboard(region, timePeriod) {
-  const ci   = CARBON_INTENSITY[region] ?? 0.25;
-  const mult = TIME_MULT[timePeriod] ?? 1;
+function computeDashboard(region, timePeriod, profile = "Hospital radiology") {
+  const ci       = CARBON_INTENSITY[region] ?? 0.25;
+  const mult     = TIME_MULT[timePeriod] ?? 1;
+  const fleet    = EQUIPMENT_PROFILES[profile] ?? EQUIPMENT_BASE;
 
-  const byEquipment = EQUIPMENT_BASE.map(eq => {
+  const byEquipment = fleet.map(eq => {
     const kwh          = (eq.active_kw*eq.active_h + eq.idle_kw*eq.idle_h + eq.standby_kw*eq.standby_h + eq.off_kw*eq.off_h) * mult;
     const activeKwh    = eq.active_kw * eq.active_h * mult;
     const idleKwh      = (eq.idle_kw * eq.idle_h + eq.standby_kw * eq.standby_h) * mult;
@@ -256,11 +276,11 @@ function computeDashboard(region, timePeriod) {
   };
 }
 
-function computeScenario(intervention, region, timePeriod) {
+function computeScenario(intervention, region, timePeriod, profile) {
   const ci   = CARBON_INTENSITY[region] ?? 0.25;
   const mult = TIME_MULT[timePeriod] ?? 1;
   const eff  = INTERVENTIONS[intervention] ?? {kwh: 0};
-  const base = computeDashboard(region, timePeriod);
+  const base = computeDashboard(region, timePeriod, profile);
 
   const kwhSaved  = rnd((eff.kwh ?? 0) * mult);
   const co2PctOff = (eff.co2Pct ?? 0) / 100;
@@ -352,7 +372,7 @@ function computeAI(cloudProvider, region, modelSize, precision, architecture) {
 function Logo({dark = false}) {
   return (
     <div className="brand">
-      <img src="./logo.png" alt="EcoRad logo" style={{width:46, height:46, objectFit:'contain', filter: dark ? 'brightness(1.8)' : 'none'}}/>
+      <span className="logoBox"><img src="./logo.png" alt="EcoRad logo" style={{width:52, height:52, objectFit:'contain', display:'block'}}/></span>
       <div><strong>EcoRad</strong><span>Sustainable Intelligence for Radiology</span></div>
     </div>
   );
@@ -390,18 +410,40 @@ function downloadCSV(dash) {
 
 const CHART_COLORS = ['#2E7D32','#26A69A','#66BB6A','#4DB6AC','#A5D6A7','#80CBC4'];
 
+// Smart unit formatters — switch unit at sensible thresholds
+const fmtCo2 = kg  => kg  >= 1000 ? `${rnd(kg/1000, 2)} tCO₂e`  : `${Math.round(kg).toLocaleString()} kgCO₂e`;
+const fmtKwh = kwh => kwh >= 1000 ? `${rnd(kwh/1000, 1)} MWh`   : `${Math.round(kwh).toLocaleString()} kWh`;
+const fmtL   = l   => l   >= 1000 ? `${rnd(l/1000, 1)} kL`      : `${Math.round(l).toLocaleString()} L`;
+
+// URL hash state persistence — encodes/decodes core settings so shared links work
+const HASH_KEYS = {p:'profile', u:'intendedUse', r:'region', m:'metricType', t:'timePeriod'};
+function readHash() {
+  try {
+    const q = new URLSearchParams(window.location.hash.replace(/^#/,''));
+    const out = {};
+    for (const [k, field] of Object.entries(HASH_KEYS)) { if (q.has(k)) out[field] = q.get(k); }
+    return out;
+  } catch { return {}; }
+}
+function writeHash(s) {
+  const q = new URLSearchParams();
+  for (const [k, field] of Object.entries(HASH_KEYS)) q.set(k, s[field]);
+  history.replaceState(null, '', '#' + q.toString());
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 function App() {
   const [page, setPage] = useState('landing');
 
-  // Shared settings — drive all calculations
-  const [settings, setSettings] = useState({
+  // Shared settings — drive all calculations; initialised from URL hash if present
+  const [settings, setSettings] = useState(() => ({
     profile: "Hospital radiology",
     intendedUse: "Estimate annual footprint",
     region: "Switzerland",
     metricType: "Energy",
     timePeriod: "Monthly",
-  });
+    ...readHash(),
+  }));
   const [scen, setScen] = useState({
     intervention: "Turn MRI/CT scanners off overnight",
     cloudProvider: "Local compute",
@@ -414,9 +456,12 @@ function App() {
   const set = (key, val) => setSettings(s => ({...s, [key]: val}));
   const setS = (key, val) => setScen(s => ({...s, [key]: val}));
 
+  // Persist settings to URL hash so links are shareable
+  useEffect(() => { writeHash(settings); }, [settings]);
+
   // Recalculate whenever settings change
-  const dash     = useMemo(() => computeDashboard(settings.region, settings.timePeriod), [settings.region, settings.timePeriod]);
-  const scenario = useMemo(() => computeScenario(scen.intervention, settings.region, settings.timePeriod), [scen.intervention, settings.region, settings.timePeriod]);
+  const dash     = useMemo(() => computeDashboard(settings.region, settings.timePeriod, settings.profile), [settings.region, settings.timePeriod, settings.profile]);
+  const scenario = useMemo(() => computeScenario(scen.intervention, settings.region, settings.timePeriod, settings.profile), [scen.intervention, settings.region, settings.timePeriod, settings.profile]);
   const ai       = useMemo(() => computeAI(scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture), [scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture]);
 
   const chartEnergy = {
@@ -435,6 +480,17 @@ function App() {
       {label:'Carbon kgCO₂e', data:[scenario.baseline.co2, scenario.projected.co2], backgroundColor:['#80CBC4','#26A69A']},
     ],
   };
+  // Scope 1/2/3 stacked horizontal bar
+  const chartScopes = {
+    labels: ['kgCO₂e' + dash.totals.label],
+    datasets: [
+      {label:'Scope 1 — Direct',           data:[dash.scopes.scope1Kg],    backgroundColor:'#81C784'},
+      {label:'Scope 2 — Electricity',       data:[dash.scopes.scope2Kg],    backgroundColor:'#2E7D32'},
+      {label:'Scope 3 — Embodied hardware', data:[dash.scopes.scope3EmbKg], backgroundColor:'#4DB6AC'},
+      {label:'Scope 3 — Patient travel',    data:[dash.scopes.scope3TravelKg],backgroundColor:'#A5D6A7'},
+    ],
+  };
+  const scopeBarOpts = {indexAxis:'y', plugins:{legend:{position:'bottom'}}, scales:{x:{stacked:true},y:{stacked:true}}, responsive:true};
 
   const pages = ['landing','input','dashboard','ai','scenario','export'];
   const PAGE_LABELS = {ai: 'AI'}; // override capitalize for abbreviations
@@ -471,7 +527,7 @@ function App() {
         <main>
           <h1>Data input</h1>
           <p className="note">These settings recalculate the entire dashboard in real time.</p>
-          <div className="grid">
+          <div className="grid grid3">
             <Sel label="Department profile" value={settings.profile}     options={META.profiles}     onChange={v=>set('profile',v)}/>
             <Sel label="Intended use"       value={settings.intendedUse} options={META.intendedUses} onChange={v=>set('intendedUse',v)}/>
             <Sel label="Region / grid"      value={settings.region}      options={META.regions}      onChange={v=>set('region',v)}/>
@@ -504,10 +560,10 @@ function App() {
           <section style={{background:'none',boxShadow:'none',padding:0}}>
             <h2 style={{marginBottom:12,color: settings.metricType==='Energy' ? '#1b5e20' : undefined}}>1. Energy consumption {settings.metricType==='Energy' && <span className="badge">viewing</span>}</h2>
             <div className="cards">
-              <Card icon={<Gauge/>}       title={`Total electricity ${dash.totals.label}`}   value={`${dash.totals.mwh} MWh`}                sub="All scanners, PACS, workstations, and servers."/>
-              <Card icon={<Activity/>}    title={`Active scanning ${dash.totals.label}`}      value={`${dash.totals.activeKwh.toLocaleString()} kWh`} sub={`${dash.totals.activePct}% of total — energy during actual scan acquisition.`}/>
-              <Card icon={<TrendingDown/>} title={`Idle + standby ${dash.totals.label}`}      value={`${dash.totals.idleKwh.toLocaleString()} kWh`}   sub={`${dash.totals.idlePct}% of total — between scans and overnight. Primary optimisation target.`}/>
-              <Card icon={<TrendingDown/>} title={`Avoidable idle ${dash.totals.label}`}      value={`${dash.totals.idleWasteKwh.toLocaleString()} kWh`} sub="Recoverable by standby / power-off policies."/>
+              <Card icon={<Gauge/>}       title={`Total electricity ${dash.totals.label}`}    value={fmtKwh(dash.totals.kwh)}                  sub="All scanners, PACS, workstations, and servers."/>
+              <Card icon={<Activity/>}    title={`Active scanning ${dash.totals.label}`}      value={fmtKwh(dash.totals.activeKwh)}            sub={`${dash.totals.activePct}% of total — energy during actual scan acquisition.`}/>
+              <Card icon={<TrendingDown/>} title={`Idle + standby ${dash.totals.label}`}      value={fmtKwh(dash.totals.idleKwh)}              sub={`${dash.totals.idlePct}% of total — between scans and overnight. Primary optimisation target.`}/>
+              <Card icon={<TrendingDown/>} title={`Avoidable idle ${dash.totals.label}`}      value={fmtKwh(dash.totals.idleWasteKwh)}         sub="Recoverable by standby / power-off policies."/>
             </div>
             <div className="cards" style={{marginTop:12}}>
               <Card icon={<Activity/>}    title="Energy per imaging scan"                     value={`${dash.totals.energyPerScan} kWh`}       sub="Total ÷ all scans. Use for modality benchmarking and protocol optimisation."/>
@@ -519,11 +575,12 @@ function App() {
             <h2 style={{marginBottom:12,color: settings.metricType==='Carbon' ? '#1b5e20' : undefined}}>2. Carbon emissions — GHG Protocol scopes {settings.metricType==='Carbon' && <span className="badge">viewing</span>}</h2>
             <p className="note" style={{marginBottom:12}}>Scope 1: direct fuel (estimated). Scope 2: purchased electricity (calculated). Scope 3: hardware embodied carbon + patient travel (estimated). All {dash.totals.label}.</p>
             <div className="cards">
-              <Card icon={<Factory/>}    title="Scope 1 — Direct"             value={`${rnd(dash.scopes.scope1Kg/1000,3)} tCO₂e`}       sub="Backup generators, medical gas. Estimated 8% of Scope 2 (McKee 2024)."/>
-              <Card icon={<Gauge/>}      title="Scope 2 — Electricity"        value={`${dash.totals.tonnesCo2e} tCO₂e`}                  sub={`Grid at ${dash.ci} kgCO₂e/kWh (${settings.region}). Primary measured scope.`}/>
-              <Card icon={<Cpu/>}        title="Scope 3 — Embodied carbon"    value={`${rnd(dash.scopes.scope3EmbKg/1000,3)} tCO₂e`}    sub="Hardware manufacturing amortised over lifespan. Extend lifetime to reduce."/>
-              <Card icon={<Car/>}        title="Scope 3 — Patient travel"     value={`${rnd(dash.scopes.scope3TravelKg/1000,3)} tCO₂e`} sub={`${dash.scopes.imagingScans.toLocaleString()} scans × ${PATIENT_KM_RT} km avg round trip at ${CAR_CO2_KG_KM} kgCO₂e/km.`}/>
+              <Card icon={<Factory/>}    title="Scope 1 — Direct"             value={fmtCo2(dash.scopes.scope1Kg)}           sub="Backup generators, medical gas. Estimated 8% of Scope 2 (McKee 2024)."/>
+              <Card icon={<Gauge/>}      title="Scope 2 — Electricity"        value={fmtCo2(dash.scopes.scope2Kg)}           sub={`Grid at ${dash.ci} kgCO₂e/kWh (${settings.region}). Primary measured scope.`}/>
+              <Card icon={<Cpu/>}        title="Scope 3 — Embodied carbon"    value={fmtCo2(dash.scopes.scope3EmbKg)}        sub="Hardware manufacturing amortised over lifespan. Extend lifetime to reduce."/>
+              <Card icon={<Car/>}        title="Scope 3 — Patient travel"     value={fmtCo2(dash.scopes.scope3TravelKg)}     sub={`${dash.scopes.imagingScans.toLocaleString()} scans × ${PATIENT_KM_RT} km avg round trip.`}/>
             </div>
+            <section style={{marginTop:16}}><h2>Scope 1 / 2 / 3 breakdown</h2><Bar data={chartScopes} options={scopeBarOpts}/></section>
           </section>
 
           {/* ── Charts ── */}
@@ -536,10 +593,10 @@ function App() {
           <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
             <h2 style={{marginBottom:12}}>3. Infrastructure and hardware</h2>
             <div className="cards">
-              <Card icon={<Cpu/>}         title="Top idle waster"               value={dash.topOpportunities[0]?.equipment ?? '—'}               sub={`${dash.topOpportunities[0]?.idleWasteKwh.toLocaleString()} kWh avoidable idle${dash.totals.label}. Highest single-unit saving.`}/>
+              <Card icon={<Cpu/>}         title="Top idle waster"               value={dash.topOpportunities[0]?.equipment ?? '—'}               sub={`${fmtKwh(dash.topOpportunities[0]?.idleWasteKwh ?? 0)} avoidable idle${dash.totals.label}. Highest single-unit saving.`}/>
               <Card icon={<Activity/>}    title="Hardware lifespans"             value="MRI 15 yr / CT 12 yr"                                      sub="X-ray 10 yr, Ultrasound 7 yr. Extend to reduce Scope 3 embodied carbon."/>
               <Card icon={<TrendingDown/>} title="Carbon intensity"              value={`${dash.ci} kgCO₂e/kWh`}                                  sub={`${settings.region} grid. Move to renewable tariff or lower-carbon region to cut Scope 2.`}/>
-              <Card icon={<Gauge/>}       title="Scope 3 total"                  value={`${rnd(dash.scopes.scope3Kg/1000,3)} tCO₂e`}              sub="Embodied + patient travel combined. Often larger than Scope 2 in a full lifecycle view."/>
+              <Card icon={<Gauge/>}       title="Scope 3 total"                  value={fmtCo2(dash.scopes.scope3Kg)}                             sub="Embodied + patient travel combined. Often larger than Scope 2 in a full lifecycle view."/>
             </div>
             <section style={{marginTop:12}}>
               <h2>Top 5 improvement opportunities — idle energy</h2>
@@ -558,10 +615,10 @@ function App() {
             <h2 style={{marginBottom:12,color: settings.metricType==='Water' ? '#1b5e20' : undefined}}>4. Resource footprint {settings.metricType==='Water' && <span className="badge">viewing</span>}</h2>
             <p className="note" style={{marginBottom:12}}>Replace defaults with procurement records, waste manifests, and water bills for publication-quality figures.</p>
             <div className="cards">
-              <Card icon={<Droplets/>}   title={`Water footprint ${dash.totals.label}`}       value={`${dash.resources.waterLitres.toLocaleString()} L`} sub={`${WATER_PER_KWH} L/kWh cooling estimate. Google Cloud 0.45 L/kWh; local servers ~2 L/kWh.`}/>
+              <Card icon={<Droplets/>}   title={`Water footprint ${dash.totals.label}`}       value={fmtL(dash.resources.waterLitres)}           sub={`${WATER_PER_KWH} L/kWh cooling estimate. Google Cloud 0.45 L/kWh; local servers ~2 L/kWh.`}/>
               <Card icon={<FileText/>}   title={`Paper consumption ${dash.totals.label}`}     value={`${dash.resources.paperKg} kg`}                     sub={`~${PAPER_G_PER_ENC}g/encounter digital workflow. Full film-based: ~200g. (ESR Green Imaging)`}/>
               <Card icon={<Trash2/>}     title={`Hazardous waste ${dash.totals.label}`}       value={`${dash.resources.hazardousKg} kg`}                 sub="Contrast media disposal, sharps. Replace with waste manifest data."/>
-              <Card icon={<Leaf/>}       title={`Total Scope 2 carbon ${dash.totals.label}`}  value={`${dash.totals.tonnesCo2e} tCO₂e`}                 sub="All electricity-derived emissions. Primary target for renewable energy procurement."/>
+              <Card icon={<Leaf/>}       title={`Total Scope 2 carbon ${dash.totals.label}`}  value={fmtCo2(dash.scopes.scope2Kg)}                       sub="All electricity-derived emissions. Primary target for renewable energy procurement."/>
             </div>
           </section>
 
