@@ -217,9 +217,12 @@ function computeDashboard(region, timePeriod, profile = "Hospital radiology", cu
     const kgco2e       = kwh * ci;
     const idleWasteKwh = eq.idle_kw * eq.avoidable_idle_h * mult;
     const scans        = eq.scans * mult;
+    const isImaging    = ["MRI","CT","X-ray","Ultrasound"].includes(eq.modality);
     return {equipment: eq.name, modality: eq.modality,
             kwh: rnd(kwh), activeKwh: rnd(activeKwh), idleKwh: rnd(idleKwh),
-            kgco2e: rnd(kgco2e), scans, energyPerScan: rnd(kwh / scans, 3),
+            kgco2e: rnd(kgco2e), scans,
+            // energyPerScan only meaningful for patient-imaging rows; null for PACS/Workstation
+            energyPerScan: isImaging ? rnd(kwh / scans, 3) : null,
             idleWasteKwh: rnd(idleWasteKwh), confidence: "estimated"};
   });
 
@@ -231,18 +234,18 @@ function computeDashboard(region, timePeriod, profile = "Hospital radiology", cu
   const totalIdle      = byEquipment.reduce((s, e) => s + e.idleWasteKwh, 0);
   const label          = TIME_LABEL[timePeriod];
 
-  // Patient-generating imaging scans only (excludes PACS/workstation virtual entries)
-  const imagingScans = EQUIPMENT_BASE
+  // Patient-generating imaging scans only — use fleet (not EQUIPMENT_BASE) so profile changes propagate
+  const imagingScans = fleet
     .filter(e => ["MRI","CT","X-ray","Ultrasound"].includes(e.modality))
     .reduce((s, e) => s + e.scans * mult, 0);
 
   // GHG Protocol scope breakdown
   // Scope 1: direct fuel/gas estimated at 8% of Scope 2 (backup generators, medical gas) — McKee 2024
-  // Scope 3 embodied: hardware manufacturing amortised (ESR PP 2025)
+  // Scope 3 embodied: hardware manufacturing amortised (ESR PP 2025) — use fleet for profile-awareness
   // Scope 3 travel: patient travel at PATIENT_KM_RT × CAR_CO2_KG_KM (DEFRA 2023)
   const scope2Kg       = rnd(totalCo2);
   const scope1Kg       = rnd(scope2Kg * 0.08);
-  const scope3EmbKg    = rnd(EQUIPMENT_BASE.reduce((s, eq) => s + (EMBODIED_KG_MO[eq.modality] ?? 0) * mult, 0));
+  const scope3EmbKg    = rnd(fleet.reduce((s, eq) => s + (EMBODIED_KG_MO[eq.modality] ?? 0) * mult, 0));
   const scope3TravelKg = rnd(imagingScans * PATIENT_KM_RT * CAR_CO2_KG_KM);
   const scope3Kg       = rnd(scope3EmbKg + scope3TravelKg);
 
@@ -257,7 +260,9 @@ function computeDashboard(region, timePeriod, profile = "Hospital radiology", cu
     totals: {
       kwh: rnd(totalKwh), mwh: rnd(totalKwh / 1000),
       tonnesCo2e: rnd(totalCo2 / 1000, 3),
-      energyPerScan: rnd(totalKwh / totalScans, 3),
+      co2Kg: totalCo2,  // raw Scope 2 kg — used by computeScenario to avoid double-rounding
+      // divide by imagingScans (MRI/CT/X-ray/US only) not totalScans (which inflates via PACS/WS placeholders)
+      energyPerScan: imagingScans > 0 ? rnd(totalKwh / imagingScans, 3) : 0,
       idleWasteKwh: rnd(totalIdle), label,
       activeKwh: rnd(totalActiveKwh), idleKwh: rnd(totalIdleKwh),
       activePct: totalKwh > 0 ? rnd(totalActiveKwh / totalKwh * 100, 1) : 0,
@@ -314,8 +319,15 @@ function computeScenario(intervention, region, timePeriod, profile, customCi, cl
       .reduce((s, eq) => s + Math.max(0, eq.idle_kw - (eq[targetField] ?? 0)) * eq.avoidable_idle_h * mult, 0));
 
   } else if (intervention === 'Move computation to lower-carbon regions') {
-    // CO₂ savings from switching compute to cloud provider's lower-CI grid
-    co2PctOff = ci > cf.ci ? rnd((ci - cf.ci) / ci * 100, 1) : 0;
+    // CO₂ saving is bounded by the compute portion of total emissions (PACS/WS only)
+    // Moving cloud region doesn't affect on-site MRI/CT scanner grid draw
+    const computeCo2 = fleet
+      .filter(eq => ['PACS/RIS','Workstation'].includes(eq.modality))
+      .reduce((s, eq) => s + (eq.active_kw*eq.active_h + eq.idle_kw*eq.idle_h + eq.standby_kw*eq.standby_h + eq.off_kw*eq.off_h) * mult * ci, 0);
+    const ciDeltaFraction = ci > cf.ci ? (ci - cf.ci) / ci : 0;
+    // Express as a % of total base CO₂ so the generic formula applies correctly
+    const baseCo2Raw = base.totals.co2Kg;
+    co2PctOff = baseCo2Raw > 0 ? rnd(computeCo2 * ciDeltaFraction / baseCo2Raw * 100, 1) : 0;
 
   } else if (intervention === 'Consolidate servers') {
     // Energy savings from improved PUE: compute workload moves to cloud
@@ -332,9 +344,9 @@ function computeScenario(intervention, region, timePeriod, profile, customCi, cl
   }
 
   const co2Fraction   = co2PctOff / 100;
-  const projectedKwh  = rnd(base.totals.kwh - kwhSaved);
-  const baseCo2kg     = rnd(base.totals.tonnesCo2e * 1000, 1);
-  const projectedCo2  = rnd(baseCo2kg * (1 - co2Fraction) - kwhSaved * ci, 1);
+  const projectedKwh  = Math.max(0, rnd(base.totals.kwh - kwhSaved));         // floor at 0
+  const baseCo2kg     = rnd(base.totals.co2Kg, 1);                            // raw kg, not tonnesCo2e*1000
+  const projectedCo2  = Math.max(0, rnd(baseCo2kg * (1 - co2Fraction) - kwhSaved * ci, 1)); // floor at 0
   const co2Saved      = rnd(baseCo2kg - projectedCo2, 1);
   const pctEnergy     = base.totals.kwh > 0 ? rnd((kwhSaved / base.totals.kwh) * 100, 1) : 0;
   const usesScanner   = SCANNER_STATE_INTERVENTIONS.has(intervention);
@@ -349,16 +361,18 @@ function computeScenario(intervention, region, timePeriod, profile, customCi, cl
   };
 }
 
-function computeAI(cloudProvider, region, modelSize, precision, architecture, customCi) {
+function computeAI(cloudProvider, region, modelSize, precision, architecture, customCi, profile) {
   const cf    = CLOUD[cloudProvider]          ?? CLOUD["Local compute"];
   const ci    = getCI(region, customCi);
   const model = AI_MODELS[modelSize]           ?? AI_MODELS["Small (< 100M params)"];
   const arch  = AI_ARCHITECTURES[architecture] ?? AI_ARCHITECTURES["CNN / ResNet"];
   const ampF  = PRECISION_FACTOR[precision]    ?? 1.0;
-  const STUDIES      = 1800;  // imaging studies per month
-  const TEST_STUDIES = 500;   // default validation / test set size
-  const DEPLOY_MO    = 36;    // deployment lifespan in months
-  const AVG_SCAN_KWH = 0.5;   // kWh per imaging study (scanner energy, not AI)
+  const DEPLOY_MO    = 36;
+  const TEST_STUDIES = 500;
+  // Derive scan volume and per-scan energy from the selected profile so both pages are consistent
+  const profileDash  = computeDashboard(region, 'Monthly', profile, customCi);
+  const STUDIES      = profileDash.scopes.imagingScans;               // imaging scans/month for this profile
+  const AVG_SCAN_KWH = profileDash.totals.energyPerScan || 0.5;       // kWh/scan from this profile (fallback 0.5)
 
   // ── Phase 1: Training ────────────────────────────────────────────────────
   // Total one-time training energy scaled by architecture and model size.
@@ -518,7 +532,7 @@ function App() {
   // Recalculate whenever settings change
   const dash     = useMemo(() => computeDashboard(settings.region, settings.timePeriod, settings.profile, settings.customCi), [settings.region, settings.timePeriod, settings.profile, settings.customCi]);
   const scenario = useMemo(() => computeScenario(scen.intervention, settings.region, settings.timePeriod, settings.profile, settings.customCi, scen.cloudProvider, scen.scannerState), [scen.intervention, settings.region, settings.timePeriod, settings.profile, settings.customCi, scen.cloudProvider, scen.scannerState]);
-  const ai       = useMemo(() => computeAI(scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi), [scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi]);
+  const ai       = useMemo(() => computeAI(scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.profile), [scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.profile]);
 
   const chartEnergy = {
     labels: dash.byEquipment.map(x => x.modality),
@@ -705,7 +719,7 @@ function App() {
 
           {/* ── 5. Equivalencies ── */}
           <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
-            <h2 style={{marginBottom:12}}>5. Real-world equivalencies</h2>
+            <h2 style={{marginBottom:12}}>5. Real-world equivalencies <span style={{fontWeight:400,fontSize:14,color:'#607d66'}}>(Scope 2 electricity only)</span></h2>
             <div className="cards">
               <Card icon={<Car/>}        title="Car km equivalent"      value={dash.equivalencies.car_km.toLocaleString()}           sub="km driven by average petrol car at 0.17 kgCO₂/km (DEFRA 2023)."/>
               <Card icon={<Activity/>}   title="Phone charges"          value={dash.equivalencies.phone_charges.toLocaleString()}    sub="Smartphone full charges at 12 Wh each."/>
