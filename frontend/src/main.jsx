@@ -500,7 +500,7 @@ function App() {
   };
 
   const pages = ['landing','input','dashboard','ai','scenario','export'];
-  const PAGE_LABELS = {ai: 'AI'}; // override capitalize for abbreviations
+  const PAGE_LABELS = {landing:'Landing', input:'Input', dashboard:'Dashboard', ai:'AI', scenario:'Scenario', export:'Export'};
 
   return (
     <>
