@@ -482,7 +482,7 @@ const fmtL   = l   => l   >= 1000 ? `${rnd(l/1000, 1)} kL`      : `${Math.round(
 
 // Resolve effective carbon intensity — uses customCi when region is "Editable custom"
 const getCI = (region, customCi) =>
-  region === 'Editable custom' ? (parseFloat(customCi) || 0.30) : (CARBON_INTENSITY[region] ?? 0.25);
+  region === 'Editable custom' ? (isNaN(parseFloat(customCi)) ? 0.30 : parseFloat(customCi)) : (CARBON_INTENSITY[region] ?? 0.25);
 
 // URL hash state persistence — encodes/decodes core settings so shared links work
 const HASH_KEYS = {p:'profile', u:'intendedUse', r:'region', m:'metricType', t:'timePeriod', c:'customCi'};
@@ -809,7 +809,7 @@ function App() {
           {/* ── Carbon summary ── */}
           <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
             <h2 style={{marginBottom:12}}>Carbon emissions summary</h2>
-            <p className="note" style={{marginBottom:12}}>Operational carbon uses cloud provider CI ({ai.cloudCi} kgCO₂e/kWh). Clinical savings use local grid ({settings.region}: {CARBON_INTENSITY[settings.region]} kgCO₂e/kWh). Global avg: 0.473 · EU avg: 0.237 (Vosshenrich)</p>
+            <p className="note" style={{marginBottom:12}}>Operational carbon uses cloud provider CI ({ai.cloudCi} kgCO₂e/kWh). Clinical savings use local grid ({settings.region}: {getCI(settings.region, settings.customCi)} kgCO₂e/kWh). Global avg: 0.473 · EU avg: 0.237 (Vosshenrich)</p>
             <div className="cards">
               <Card icon={<Leaf/>}        title="Gross CO₂e/month"          value={`${ai.grossKgCo2e} kgCO₂e`}                 sub="Inference + amortised training + embodied GPU (all monthly)."/>
               <Card icon={<Cpu/>}         title="Embodied GPU carbon"        value={`${ai.embGpuKgCo2e} kgCO₂e/mo`}            sub={`Total ${AI_MODELS[scen.modelSize].embCo2Kg} kgCO₂e manufacturing, amortised 36 months. (ESR PP 2025)`}/>
