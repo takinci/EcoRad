@@ -443,9 +443,9 @@ function Logo({onClick}) {
   );
 }
 
-function Card({title, value, sub, icon}) {
+function Card({title, value, sub, icon, style}) {
   return (
-    <section className="card">
+    <section className="card" style={style}>
       <div className="cardHead">{icon}<span>{title}</span></div>
       <b>{value}</b>
       <p>{sub}</p>
@@ -536,8 +536,22 @@ function App() {
 
   const chartEnergy = {
     labels: dash.byEquipment.map(x => x.modality),
-    datasets: [{label:`kWh${dash.totals.label}`, data: dash.byEquipment.map(x => x.kwh),
-                backgroundColor:'#A5D6A7', borderColor:'#2E7D32', borderWidth:1}],
+    datasets: [{
+      label:`kWh${dash.totals.label}`,
+      data: dash.byEquipment.map(x => x.kwh),
+      backgroundColor: dash.byEquipment.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+      borderColor: dash.byEquipment.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+      borderWidth: 1,
+    }],
+  };
+  const energyBarOptions = {
+    indexAxis: 'y',
+    responsive: true,
+    plugins: {legend: {display: false}},
+    scales: {
+      x: {ticks: {callback: v => `${v}`}},
+      y: {grid: {display: false}},
+    },
   };
   const chartCo2 = {
     labels: dash.byEquipment.map(x => x.modality),
@@ -651,7 +665,7 @@ function App() {
           <section style={{background:'none',boxShadow:'none',padding:0}}>
             <h2 style={{marginBottom:12,color: settings.metricType==='Energy' ? '#1b5e20' : undefined}}>1. Energy consumption {settings.metricType==='Energy' && <span className="badge">viewing</span>}</h2>
             <div className="cards">
-              <Card icon={<Gauge/>}       title={`Total electricity ${dash.totals.label}`}    value={fmtKwh(dash.totals.kwh)}                  sub="All scanners, PACS, workstations, and servers."/>
+              <Card icon={<Gauge/>}       title={`Total electricity ${dash.totals.label}`}    value={fmtKwh(dash.totals.kwh)}                  sub="All scanners, PACS, workstations, and servers." style={{gridColumn:'span 2'}}/>
               <Card icon={<Activity/>}    title={`Active scanning ${dash.totals.label}`}      value={fmtKwh(dash.totals.activeKwh)}            sub={`${dash.totals.activePct}% of total — energy during actual scan acquisition.`}/>
               <Card icon={<TrendingDown/>} title={`Idle + standby ${dash.totals.label}`}      value={fmtKwh(dash.totals.idleKwh)}              sub={`${dash.totals.idlePct}% of total — between scans and overnight. Primary optimisation target.`}/>
               <Card icon={<TrendingDown/>} title={`Avoidable idle ${dash.totals.label}`}      value={fmtKwh(dash.totals.idleWasteKwh)}         sub="Recoverable by standby / power-off policies."/>
@@ -680,7 +694,7 @@ function App() {
 
           {/* ── Charts ── */}
           <div className="charts" style={{marginTop:28}}>
-            <section><h2>Energy by equipment</h2><Bar data={chartEnergy}/></section>
+            <section><h2>Energy by equipment</h2><Bar data={chartEnergy} options={energyBarOptions}/></section>
             <section><h2>Carbon (Scope 2) by equipment</h2><Doughnut data={chartCo2}/></section>
           </div>
 
