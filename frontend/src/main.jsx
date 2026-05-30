@@ -205,8 +205,8 @@ const META = {
 // ── Calculation functions ─────────────────────────────────────────────────────
 const rnd = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
 
-function computeDashboard(region, timePeriod, profile = "Hospital radiology") {
-  const ci       = CARBON_INTENSITY[region] ?? 0.25;
+function computeDashboard(region, timePeriod, profile = "Hospital radiology", customCi) {
+  const ci       = getCI(region, customCi);
   const mult     = TIME_MULT[timePeriod] ?? 1;
   const fleet    = EQUIPMENT_PROFILES[profile] ?? EQUIPMENT_BASE;
 
@@ -276,11 +276,11 @@ function computeDashboard(region, timePeriod, profile = "Hospital radiology") {
   };
 }
 
-function computeScenario(intervention, region, timePeriod, profile) {
-  const ci   = CARBON_INTENSITY[region] ?? 0.25;
+function computeScenario(intervention, region, timePeriod, profile, customCi) {
+  const ci   = getCI(region, customCi);
   const mult = TIME_MULT[timePeriod] ?? 1;
   const eff  = INTERVENTIONS[intervention] ?? {kwh: 0};
-  const base = computeDashboard(region, timePeriod, profile);
+  const base = computeDashboard(region, timePeriod, profile, customCi);
 
   const kwhSaved  = rnd((eff.kwh ?? 0) * mult);
   const co2PctOff = (eff.co2Pct ?? 0) / 100;
@@ -298,9 +298,9 @@ function computeScenario(intervention, region, timePeriod, profile) {
   };
 }
 
-function computeAI(cloudProvider, region, modelSize, precision, architecture) {
+function computeAI(cloudProvider, region, modelSize, precision, architecture, customCi) {
   const cf    = CLOUD[cloudProvider]          ?? CLOUD["Local compute"];
-  const ci    = CARBON_INTENSITY[region]       ?? 0.25;
+  const ci    = getCI(region, customCi);
   const model = AI_MODELS[modelSize]           ?? AI_MODELS["Small (< 100M params)"];
   const arch  = AI_ARCHITECTURES[architecture] ?? AI_ARCHITECTURES["CNN / ResNet"];
   const ampF  = PRECISION_FACTOR[precision]    ?? 1.0;
@@ -415,8 +415,12 @@ const fmtCo2 = kg  => kg  >= 1000 ? `${rnd(kg/1000, 2)} tCO₂e`  : `${Math.roun
 const fmtKwh = kwh => kwh >= 1000 ? `${rnd(kwh/1000, 1)} MWh`   : `${Math.round(kwh).toLocaleString()} kWh`;
 const fmtL   = l   => l   >= 1000 ? `${rnd(l/1000, 1)} kL`      : `${Math.round(l).toLocaleString()} L`;
 
+// Resolve effective carbon intensity — uses customCi when region is "Editable custom"
+const getCI = (region, customCi) =>
+  region === 'Editable custom' ? (parseFloat(customCi) || 0.30) : (CARBON_INTENSITY[region] ?? 0.25);
+
 // URL hash state persistence — encodes/decodes core settings so shared links work
-const HASH_KEYS = {p:'profile', u:'intendedUse', r:'region', m:'metricType', t:'timePeriod'};
+const HASH_KEYS = {p:'profile', u:'intendedUse', r:'region', m:'metricType', t:'timePeriod', c:'customCi'};
 function readHash() {
   try {
     const q = new URLSearchParams(window.location.hash.replace(/^#/,''));
@@ -442,6 +446,7 @@ function App() {
     region: "Switzerland",
     metricType: "Energy",
     timePeriod: "Monthly",
+    customCi: "0.30",
     ...readHash(),
   }));
   const [scen, setScen] = useState({
@@ -460,9 +465,9 @@ function App() {
   useEffect(() => { writeHash(settings); }, [settings]);
 
   // Recalculate whenever settings change
-  const dash     = useMemo(() => computeDashboard(settings.region, settings.timePeriod, settings.profile), [settings.region, settings.timePeriod, settings.profile]);
-  const scenario = useMemo(() => computeScenario(scen.intervention, settings.region, settings.timePeriod, settings.profile), [scen.intervention, settings.region, settings.timePeriod, settings.profile]);
-  const ai       = useMemo(() => computeAI(scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture), [scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture]);
+  const dash     = useMemo(() => computeDashboard(settings.region, settings.timePeriod, settings.profile, settings.customCi), [settings.region, settings.timePeriod, settings.profile, settings.customCi]);
+  const scenario = useMemo(() => computeScenario(scen.intervention, settings.region, settings.timePeriod, settings.profile, settings.customCi), [scen.intervention, settings.region, settings.timePeriod, settings.profile, settings.customCi]);
+  const ai       = useMemo(() => computeAI(scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi), [scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi]);
 
   const chartEnergy = {
     labels: dash.byEquipment.map(x => x.modality),
@@ -541,8 +546,22 @@ function App() {
             <Sel label="Metric type"        value={settings.metricType}  options={META.metricTypes}  onChange={v=>set('metricType',v)}/>
             <Sel label="Time period"        value={settings.timePeriod}  options={META.timePeriods}  onChange={v=>set('timePeriod',v)}/>
           </div>
+          {settings.region === 'Editable custom' && (
+            <div style={{marginTop:16}}>
+              <label style={{maxWidth:320}}>
+                Custom carbon intensity (kgCO₂e/kWh)
+                <input
+                  type="number" min="0" max="2" step="0.001"
+                  value={settings.customCi}
+                  onChange={e => set('customCi', e.target.value)}
+                  style={{marginTop:8}}
+                />
+              </label>
+              <p className="note" style={{marginTop:6}}>Enter your local utility or national grid factor. Check your electricity provider or national statistics office. Global avg: 0.473 · EU avg: 0.237 (Vosshenrich et al.)</p>
+            </div>
+          )}
           <div className="inputSummary">
-            <p>Carbon intensity for <strong>{settings.region}</strong>: <strong>{(CARBON_INTENSITY[settings.region]??0.25)} kgCO₂e/kWh</strong> <span className="note">— Our World in Data, 2022–2023 national average. Replace with local utility data for higher accuracy.</span></p>
+            <p>Carbon intensity for <strong>{settings.region}</strong>: <strong>{getCI(settings.region, settings.customCi)} kgCO₂e/kWh</strong> <span className="note">— {settings.region === 'Editable custom' ? 'custom value — edit above.' : 'Our World in Data, 2022–2023 national average. Replace with local utility data for higher accuracy.'}</span></p>
             <p>Showing <strong>{settings.timePeriod.toLowerCase()}</strong> figures — multiplier ×{TIME_MULT[settings.timePeriod]}</p>
             <p className="note">Equipment power defaults: MRI 30 kW active (Heye et al., JMRI 2023 · DOI 10.1002/jmri.28994); CT 60 kW active (Acra 2024 · DOI 10.1016/j.acra.2024.05.004). See <a href="https://github.com/takinci/EcoRad/blob/main/sources.md" style={{color:'#2E7D32'}} target="_blank" rel="noreferrer">sources.md</a> for all citations.</p>
             <button onClick={()=>setPage(settings.metricType==='AI net impact' ? 'ai' : 'dashboard')} style={{marginTop:16}}>
