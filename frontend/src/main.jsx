@@ -505,13 +505,7 @@ function App() {
   return (
     <>
       <header>
-        <Logo onClick={() => {
-          const defaultSettings = {profile:"Hospital radiology", intendedUse:"Estimate annual footprint", region:"Switzerland", metricType:"Energy", timePeriod:"Monthly"};
-          setPage('landing');
-          setSettings(defaultSettings);
-          setScen({intervention:"Turn MRI/CT scanners off overnight", cloudProvider:"Local compute", scannerState:"Standby", modelSize:"Small (< 100M params)", precision:"float32 (standard)", architecture:"CNN / ResNet"});
-          history.replaceState(null, '', window.location.pathname + window.location.search);
-        }}/>
+        <Logo onClick={() => window.location.assign('https://takinci.github.io/EcoRad/')}/>
         <nav>
           {pages.map(p => (
             <button key={p} className={page===p?'on':''} onClick={()=>setPage(p)}>{PAGE_LABELS[p] ?? p}</button>
