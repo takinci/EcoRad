@@ -369,9 +369,9 @@ function computeAI(cloudProvider, region, modelSize, precision, architecture) {
 }
 
 // ── UI components ─────────────────────────────────────────────────────────────
-function Logo({dark = false}) {
+function Logo({onClick}) {
   return (
-    <div className="brand">
+    <div className="brand" onClick={onClick} style={onClick ? {cursor:'pointer'} : undefined}>
       <img src="./logo.png" alt="EcoRad logo" style={{width:52, height:52, objectFit:'contain'}}/>
       <div><strong>EcoRad</strong><span>Sustainable Intelligence for Radiology</span></div>
     </div>
@@ -505,7 +505,11 @@ function App() {
   return (
     <>
       <header>
-        <Logo/>
+        <Logo onClick={() => {
+          setPage('landing');
+          setSettings({profile:"Hospital radiology", intendedUse:"Estimate annual footprint", region:"Switzerland", metricType:"Energy", timePeriod:"Monthly"});
+          setScen({intervention:"Turn MRI/CT scanners off overnight", cloudProvider:"Local compute", scannerState:"Standby", modelSize:"Small (< 100M params)", precision:"float32 (standard)", architecture:"CNN / ResNet"});
+        }}/>
         <nav>
           {pages.map(p => (
             <button key={p} className={page===p?'on':''} onClick={()=>setPage(p)}>{PAGE_LABELS[p] ?? p}</button>
