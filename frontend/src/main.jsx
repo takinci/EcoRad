@@ -480,17 +480,24 @@ function App() {
       {label:'Carbon kgCO₂e', data:[scenario.baseline.co2, scenario.projected.co2], backgroundColor:['#80CBC4','#26A69A']},
     ],
   };
-  // Scope 1/2/3 stacked horizontal bar
+  // Scope 1/2/3 stacked horizontal bar — shown as % of total so all scopes are visible
+  const scopeTotal = dash.scopes.scope1Kg + dash.scopes.scope2Kg + dash.scopes.scope3Kg;
+  const scopePct   = v => scopeTotal > 0 ? rnd(v / scopeTotal * 100, 1) : 0;
   const chartScopes = {
-    labels: ['kgCO₂e' + dash.totals.label],
+    labels: ['% of total emissions' + dash.totals.label],
     datasets: [
-      {label:'Scope 1 — Direct',           data:[dash.scopes.scope1Kg],    backgroundColor:'#81C784'},
-      {label:'Scope 2 — Electricity',       data:[dash.scopes.scope2Kg],    backgroundColor:'#2E7D32'},
-      {label:'Scope 3 — Embodied hardware', data:[dash.scopes.scope3EmbKg], backgroundColor:'#4DB6AC'},
-      {label:'Scope 3 — Patient travel',    data:[dash.scopes.scope3TravelKg],backgroundColor:'#A5D6A7'},
+      {label:`Scope 1 — Direct (${scopePct(dash.scopes.scope1Kg)}%)`,           data:[scopePct(dash.scopes.scope1Kg)],    backgroundColor:'#81C784'},
+      {label:`Scope 2 — Electricity (${scopePct(dash.scopes.scope2Kg)}%)`,       data:[scopePct(dash.scopes.scope2Kg)],    backgroundColor:'#2E7D32'},
+      {label:`Scope 3 — Embodied (${scopePct(dash.scopes.scope3EmbKg)}%)`,       data:[scopePct(dash.scopes.scope3EmbKg)], backgroundColor:'#4DB6AC'},
+      {label:`Scope 3 — Patient travel (${scopePct(dash.scopes.scope3TravelKg)}%)`, data:[scopePct(dash.scopes.scope3TravelKg)], backgroundColor:'#A5D6A7'},
     ],
   };
-  const scopeBarOpts = {indexAxis:'y', plugins:{legend:{position:'bottom'}}, scales:{x:{stacked:true},y:{stacked:true}}, responsive:true};
+  const scopeBarOpts = {
+    indexAxis:'y',
+    plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label: ctx => ` ${ctx.dataset.label}: ${fmtCo2(dash.scopes[['scope1Kg','scope2Kg','scope3EmbKg','scope3TravelKg'][ctx.datasetIndex]])}`}}},
+    scales:{x:{stacked:true, max:100, ticks:{callback: v => v+'%'}}, y:{stacked:true}},
+    responsive:true,
+  };
 
   const pages = ['landing','input','dashboard','ai','scenario','export'];
   const PAGE_LABELS = {ai: 'AI'}; // override capitalize for abbreviations
@@ -580,7 +587,11 @@ function App() {
               <Card icon={<Cpu/>}        title="Scope 3 — Embodied carbon"    value={fmtCo2(dash.scopes.scope3EmbKg)}        sub="Hardware manufacturing amortised over lifespan. Extend lifetime to reduce."/>
               <Card icon={<Car/>}        title="Scope 3 — Patient travel"     value={fmtCo2(dash.scopes.scope3TravelKg)}     sub={`${dash.scopes.imagingScans.toLocaleString()} scans × ${PATIENT_KM_RT} km avg round trip.`}/>
             </div>
-            <section style={{marginTop:16}}><h2>Scope 1 / 2 / 3 breakdown</h2><Bar data={chartScopes} options={scopeBarOpts}/></section>
+            <section style={{marginTop:16}}>
+              <h2>Scope 1 / 2 / 3 breakdown</h2>
+              <Bar data={chartScopes} options={scopeBarOpts}/>
+              <p className="note" style={{marginTop:8}}>Patient travel typically dominates Scope 3 in clean-grid regions — reducing unnecessary scans cuts more carbon than efficiency measures alone. Absolute values shown in cards above.</p>
+            </section>
           </section>
 
           {/* ── Charts ── */}
