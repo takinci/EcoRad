@@ -1,5 +1,6 @@
 import React, {useState, useMemo, useEffect} from 'react';
 import {createRoot} from 'react-dom/client';
+import {flushSync} from 'react-dom';
 import {Bar, Doughnut} from 'react-chartjs-2';
 import {Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend} from 'chart.js';
 import {Leaf, Brain, Download, Activity, Gauge, TrendingDown, Droplets, FileText, Trash2, Cpu, Car, TreePine, Plane, Factory, Zap, Target, AlertTriangle, BarChart3} from 'lucide-react';
@@ -526,6 +527,15 @@ function App() {
   const set = (key, val) => setSettings(s => ({...s, [key]: val}));
   const setS = (key, val) => setScen(s => ({...s, [key]: val}));
 
+  // Print the dashboard: synchronously render it before opening the dialog,
+  // then restore the export page once the dialog is dismissed.
+  const handlePrint = () => {
+    flushSync(() => setPage('dashboard'));
+    const restore = () => { setPage('export'); window.removeEventListener('afterprint', restore); };
+    window.addEventListener('afterprint', restore);
+    window.print();
+  };
+
   // Persist settings to URL hash so links are shareable
   useEffect(() => { writeHash(settings); }, [settings]);
 
@@ -921,7 +931,7 @@ function App() {
           <h1>Export report</h1>
           <p>Every report should include the assumptions table, confidence level, units, and citation fields.</p>
           <button className="download" onClick={()=>downloadCSV(dash)}><Download/>Download CSV ({settings.timePeriod})</button>
-          <button className="download" onClick={()=>window.print()} style={{marginLeft:'12px'}}><Download/>Print / Save as PDF</button>
+          <button className="download" onClick={handlePrint} style={{marginLeft:'12px'}}><Download/>Print / Save as PDF</button>
           <section style={{marginTop:24}}>
             <h2>Key assumptions and sources</h2>
             <p className="note">Carbon intensity: Our World in Data 2022–2023 national averages (ourworldindata.org/grapher/carbon-intensity-electricity).</p>
