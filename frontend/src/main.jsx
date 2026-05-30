@@ -466,12 +466,66 @@ function Sel({label: lbl, value, options, onChange}) {
 }
 
 function downloadCSV(dash) {
-  const headers = ["equipment","modality","kwh","kgco2e","scans","energyPerScan","idleWasteKwh","confidence"];
-  const rows = dash.byEquipment.map(r => headers.map(h => r[h]).join(','));
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([[headers.join(','), ...rows].join('\n')], {type:'text/csv'}));
-  a.download = 'ecorad_dashboard.csv';
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const row = cells => cells.map(q).join(',');
+  const blank = '';
+
+  const lines = [
+    row(['EcoRad Sustainability Report']),
+    row(['Profile', dash.region, dash.timePeriod]),
+    row(['Carbon intensity (kgCO2e/kWh)', dash.ci]),
+    blank,
+
+    row(['ENERGY TOTALS']),
+    row(['Metric', 'Value', 'Unit']),
+    row(['Total electricity',   dash.totals.kwh,         'kWh']),
+    row(['Active scanning',     dash.totals.activeKwh,   'kWh']),
+    row(['Idle + standby',      dash.totals.idleKwh,     'kWh']),
+    row(['Avoidable idle',      dash.totals.idleWasteKwh,'kWh']),
+    row(['Energy per imaging scan', dash.totals.energyPerScan, 'kWh/scan']),
+    blank,
+
+    row(['CARBON — GHG PROTOCOL SCOPES']),
+    row(['Scope', 'kgCO2e']),
+    row(['Scope 1 — Direct',           dash.scopes.scope1Kg]),
+    row(['Scope 2 — Electricity',      dash.scopes.scope2Kg]),
+    row(['Scope 3 — Embodied carbon',  dash.scopes.scope3EmbKg]),
+    row(['Scope 3 — Patient travel',   dash.scopes.scope3TravelKg]),
+    row(['Scope 3 — Total',            dash.scopes.scope3Kg]),
+    blank,
+
+    row(['RESOURCES']),
+    row(['Metric', 'Value', 'Unit']),
+    row(['Water footprint',   dash.resources.waterLitres, 'L']),
+    row(['Paper consumption', dash.resources.paperKg,     'kg']),
+    row(['Hazardous waste',   dash.resources.hazardousKg, 'kg']),
+    blank,
+
+    row(['REAL-WORLD EQUIVALENCIES (Scope 2)']),
+    row(['Metric', 'Value', 'Unit']),
+    row(['Car km equivalent',     dash.equivalencies.car_km,          'km']),
+    row(['Phone charges',         dash.equivalencies.phone_charges,   'charges']),
+    row(['Tree-years to offset',  dash.equivalencies.trees_year,      'tree-years']),
+    row(['Short-haul flights',    dash.equivalencies.flights_short,   'flights']),
+    row(['Household electricity', dash.equivalencies.household_years, 'years']),
+    blank,
+
+    row(['EQUIPMENT BREAKDOWN']),
+    row(['Equipment', 'Modality', 'kWh', 'kgCO2e', 'Scans', 'kWh/scan', 'Avoidable idle kWh', 'Confidence']),
+    ...dash.byEquipment.map(r =>
+      row([r.equipment, r.modality, r.kwh, r.kgco2e, r.scans, r.energyPerScan ?? 'N/A', r.idleWasteKwh, r.confidence])
+    ),
+  ];
+
+  const blob = new Blob([lines.join('\n')], {type: 'text/csv'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `ecorad_${dash.region}_${dash.timePeriod}.csv`.replace(/\s+/g, '_');
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 const CHART_COLORS = ['#2E7D32','#26A69A','#66BB6A','#4DB6AC','#A5D6A7','#80CBC4'];
