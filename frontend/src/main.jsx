@@ -547,6 +547,7 @@ function App() {
   const energyBarOptions = {
     indexAxis: 'y',
     responsive: true,
+    aspectRatio: 1,
     plugins: {legend: {display: false}},
     scales: {
       x: {ticks: {callback: v => `${v}`}},
@@ -554,7 +555,7 @@ function App() {
     },
   };
   const chartCo2 = {
-    labels: dash.byEquipment.map(x => x.modality),
+    labels: dash.byEquipment.map(x => x.equipment),
     datasets: [{label:'kgCO₂e', data: dash.byEquipment.map(x => x.kgco2e), backgroundColor: CHART_COLORS}],
   };
   const chartScenario = {
