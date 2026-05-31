@@ -678,7 +678,7 @@ function App() {
   };
 
   const pages = ['landing','input','dashboard','ai','scenario','export'];
-  const PAGE_LABELS = {landing:'Landing', input:'Input', dashboard:'Dashboard', ai:'AI', scenario:'Scenario', export:'Export'};
+  const PAGE_LABELS = {landing:'Landing', input:'Input', dashboard:'Dashboard', ai:'AI', scenario:'Scenario', export:'References/Report'};
 
   return (
     <>
@@ -1018,7 +1018,7 @@ function App() {
       {/* ── Export ── */}
       {page==='export' && (
         <main>
-          <h1>Export report</h1>
+          <h1>References / Report</h1>
           <p>Every report should include the assumptions table, confidence level, units, and citation fields.</p>
           <button className="download" onClick={()=>downloadCSV(dash)}><Download/>Download CSV ({settings.timePeriod})</button>
           <button className="download" onClick={handlePrint} style={{marginLeft:'12px'}}><Download/>Print / Save as PDF</button>
