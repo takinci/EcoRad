@@ -582,7 +582,8 @@ function App() {
 
   const set  = (key, val) => setSettings(s => ({...s, [key]: val}));
   const setS = (key, val) => setScen(s => ({...s, [key]: val}));
-  const [aiTab, setAiTab] = useState('model');
+  const [aiTab,   setAiTab]   = useState('model');
+  const [dashTab, setDashTab] = useState('energy');
 
   // Print the dashboard: synchronously render it before opening the dialog,
   // then restore the export page once the dialog is dismissed.
@@ -754,8 +755,25 @@ function App() {
             </p>
           )}
 
+          {/* ── Sticky tab nav ── */}
+          <div className="stickyControls">
+            <div className="aiSummary">
+              <span>Total energy <b>{fmtKwh(dash.totals.kwh)}{dash.totals.label}</b></span>
+              <span>Scope 2 CO₂ <b>{fmtCo2(dash.scopes.scope2Kg)}</b></span>
+              <span>Avoidable idle <b>{fmtKwh(dash.totals.idleWasteKwh)}</b></span>
+            </div>
+            <div className="aiTabs">
+              {[['energy','Energy'],['carbon','Carbon'],['charts','Charts'],['infrastructure','Infrastructure'],['resources','Resources'],['equiv','Equivalencies']].map(([id,label])=>(
+                <button key={id} className={dashTab===id?'on':''} onClick={()=>{
+                  setDashTab(id);
+                  document.getElementById('dash-'+id)?.scrollIntoView({behavior:'smooth',block:'start'});
+                }}>{label}</button>
+              ))}
+            </div>
+          </div>
+
           {/* ── 1. Energy consumption ── */}
-          <section style={{background:'none',boxShadow:'none',padding:0}}>
+          <section id="dash-energy" className="aiSection" style={{background:'none',boxShadow:'none',padding:0}}>
             <h2 style={{marginBottom:12,color: settings.metricType==='Energy' ? '#1b5e20' : undefined}}>1. Energy consumption {settings.metricType==='Energy' && <span className="badge">viewing</span>}</h2>
             <div className="cards">
               <Card icon={<Gauge/>}       title={`Total electricity ${dash.totals.label}`}    value={fmtKwh(dash.totals.kwh)}                  sub="All scanners, PACS, workstations, and servers." style={{gridColumn:'span 4'}}/>
@@ -767,7 +785,7 @@ function App() {
           </section>
 
           {/* ── 2. Carbon emissions ── */}
-          <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
+          <section id="dash-carbon" className="aiSection" style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
             <h2 style={{marginBottom:12,color: settings.metricType==='Carbon' ? '#1b5e20' : undefined}}>2. Carbon emissions — GHG Protocol scopes {settings.metricType==='Carbon' && <span className="badge">viewing</span>}</h2>
             <p className="note" style={{marginBottom:12}}>Scope 1: direct fuel (estimated). Scope 2: purchased electricity (calculated). Scope 3: hardware embodied carbon + patient travel (estimated). All {dash.totals.label}.</p>
             <div className="cards">
@@ -784,13 +802,13 @@ function App() {
           </section>
 
           {/* ── Charts ── */}
-          <div className="charts" style={{marginTop:28}}>
+          <div id="dash-charts" className="aiSection charts" style={{marginTop:28}}>
             <section><h2>Energy by equipment</h2><Suspense fallback={<div style={{height:200}}/>}><Bar data={chartEnergy} options={energyBarOptions}/></Suspense></section>
             <section><h2>Carbon (Scope 2) by equipment</h2><Suspense fallback={<div style={{height:200}}/>}><Doughnut data={chartCo2}/></Suspense></section>
           </div>
 
           {/* ── 3. Infrastructure ── */}
-          <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
+          <section id="dash-infrastructure" className="aiSection" style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
             <h2 style={{marginBottom:12}}>3. Infrastructure and hardware</h2>
             <div className="cards">
               <Card icon={<Cpu/>}         title="Top idle waster"               value={dash.topOpportunities[0]?.equipment ?? '—'}               sub={`${fmtKwh(dash.topOpportunities[0]?.idleWasteKwh ?? 0)} avoidable idle${dash.totals.label}. Highest single-unit saving.`}/>
@@ -811,7 +829,7 @@ function App() {
           </section>
 
           {/* ── 4. Resource metrics ── */}
-          <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
+          <section id="dash-resources" className="aiSection" style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
             <h2 style={{marginBottom:12,color: settings.metricType==='Water' ? '#1b5e20' : undefined}}>4. Resource footprint {settings.metricType==='Water' && <span className="badge">viewing</span>}</h2>
             <p className="note" style={{marginBottom:12}}>Replace defaults with procurement records, waste manifests, and water bills for publication-quality figures.</p>
             <div className="cards">
@@ -823,7 +841,7 @@ function App() {
           </section>
 
           {/* ── 5. Equivalencies ── */}
-          <section style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
+          <section id="dash-equiv" className="aiSection" style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
             <h2 style={{marginBottom:12}}>5. Real-world equivalencies <span style={{fontWeight:400,fontSize:14,color:'#607d66'}}>(Scope 2 electricity only)</span></h2>
             <div className="cards">
               <Card icon={<Car/>}        title="Car km equivalent"      value={dash.equivalencies.car_km.toLocaleString()}           sub="km driven by average petrol car at 0.17 kgCO₂/km (DEFRA 2023)."/>
