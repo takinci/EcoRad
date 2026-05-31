@@ -1,8 +1,10 @@
-import React, {useState, useMemo, useEffect} from 'react';
+import React, {useState, useMemo, useEffect, Suspense} from 'react';
 import {createRoot} from 'react-dom/client';
 import {flushSync} from 'react-dom';
-import {Bar, Doughnut} from 'react-chartjs-2';
 import {Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend} from 'chart.js';
+
+const Bar      = React.lazy(() => import('react-chartjs-2').then(m => ({default: m.Bar})));
+const Doughnut = React.lazy(() => import('react-chartjs-2').then(m => ({default: m.Doughnut})));
 import {Leaf, Brain, Download, Activity, Gauge, TrendingDown, Droplets, FileText, Trash2, Cpu, Car, TreePine, Plane, Factory, Zap, Target, AlertTriangle, BarChart3} from 'lucide-react';
 import './styles.css';
 
@@ -438,7 +440,7 @@ function computeAI(cloudProvider, region, modelSize, precision, architecture, cu
 function Logo({onClick}) {
   return (
     <div className="brand" onClick={onClick} style={onClick ? {cursor:'pointer'} : undefined}>
-      <img src="./logo.png" alt="EcoRad logo" style={{width:52, height:52, objectFit:'contain'}}/>
+      <img src="./logo.svg" alt="EcoRad logo" style={{width:68, height:68, objectFit:'contain'}}/>
       <div><strong>EcoRad</strong><span>Sustainable Intelligence for Radiology</span></div>
     </div>
   );
@@ -775,15 +777,15 @@ function App() {
             </div>
             <section style={{marginTop:16}}>
               <h2>Scope 1 / 2 / 3 breakdown</h2>
-              <Bar data={chartScopes} options={scopeBarOpts}/>
+              <Suspense fallback={<div style={{height:80}}/>}><Bar data={chartScopes} options={scopeBarOpts}/></Suspense>
               <p className="note" style={{marginTop:8}}>Patient travel typically dominates Scope 3 in clean-grid regions — reducing unnecessary scans cuts more carbon than efficiency measures alone. Absolute values shown in cards above.</p>
             </section>
           </section>
 
           {/* ── Charts ── */}
           <div className="charts" style={{marginTop:28}}>
-            <section><h2>Energy by equipment</h2><Bar data={chartEnergy} options={energyBarOptions}/></section>
-            <section><h2>Carbon (Scope 2) by equipment</h2><Doughnut data={chartCo2}/></section>
+            <section><h2>Energy by equipment</h2><Suspense fallback={<div style={{height:200}}/>}><Bar data={chartEnergy} options={energyBarOptions}/></Suspense></section>
+            <section><h2>Carbon (Scope 2) by equipment</h2><Suspense fallback={<div style={{height:200}}/>}><Doughnut data={chartCo2}/></Suspense></section>
           </div>
 
           {/* ── 3. Infrastructure ── */}
@@ -973,7 +975,7 @@ function App() {
             </section>
           </div>
           <div className="charts" style={{marginTop:24}}>
-            <section><h2>Before vs after</h2><Bar data={chartScenario}/></section>
+            <section><h2>Before vs after</h2><Suspense fallback={<div style={{height:200}}/>}><Bar data={chartScenario}/></Suspense></section>
           </div>
           <p className="note" style={{marginTop:12}}>Region: {settings.region} — {settings.timePeriod} figures. Change region or time period on the Input page.</p>
         </main>
