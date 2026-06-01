@@ -98,10 +98,10 @@ EcoRad stores uncertain literature values as transparent, editable defaults with
 | ID | Citation |
 |----|---------|
 | Doo-2024 | See Radiology sustainability section. Primary reference for `computeAI()` footprint vs. benefit logic. |
-| LLM-Energy | *Optimal LLM Characteristics to Balance Accuracy and Energy Use for Sustainable Medical AI.* Uploaded PDF. Inference energy scaling with model size; underpins the model-efficiency intervention note. |
-| Planet-Health | *Planetary Health and Radiology.* Uploaded PDF (McKee group). Framework for scoping AI footprint inside departmental Scope 2. |
-| AI-Sustainability | *Environmental Sustainability and AI in Radiology.* Uploaded PDF. AI operational lifecycle, cloud carbon, and procurement guidance. |
-| Clinical-AI | *Sustainability in Clinical AI.* Uploaded PDF. AI governance, model efficiency, infrastructure carbon, and lifecycle assessment methodology. |
+| LLM-Energy | Doo FX, Savani D, Kanhere A, Carlos RC, Joshi A, Yi PH, Parekh VS. *Optimal Large Language Model Characteristics to Balance Accuracy and Energy Use for Sustainable Medical Applications.* Radiology 2024;312(2). DOI: [10.1148/radiol.240320](https://doi.org/10.1148/radiol.240320). Inference energy scaling with model size; underpins the model-efficiency intervention note. |
+| Planet-Health | Same as McKee-2024 above (DOI: [10.1148/radiol.240219](https://doi.org/10.1148/radiol.240219)). McKee BJ et al. *Planetary Health and Radiology: Why We Should Care and What We Can Do.* Radiology 2024. Framework for scoping AI footprint inside departmental Scope 2. |
+| AI-Sustainability | Same as Doo-2024 above (DOI: [10.1148/radiol.232030](https://doi.org/10.1148/radiol.232030)). Doo FX et al. *Environmental Sustainability and AI in Radiology: A Double-Edged Sword.* Radiology 2024. AI operational lifecycle, cloud carbon, and procurement guidance. |
+| Clinical-AI | Kocak B, Ponsiglione A, Romeo V, Ugga L, Huisman M, Cuocolo R. *Radiology AI and sustainability paradox: environmental, economic, and social dimensions.* Insights Imaging 2025;16(1):88. DOI: [10.1186/s13244-025-01962-2](https://doi.org/10.1186/s13244-025-01962-2). AI governance, model efficiency, infrastructure carbon, and lifecycle assessment methodology. |
 
 **Cloud `CLOUD` defaults (PUE and kgCO₂e/kWh):**
 - Local compute PUE 1.50 — typical on-premise server room; ASHRAE standard reference.

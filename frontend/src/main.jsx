@@ -1027,8 +1027,10 @@ function App() {
             <p className="note">Carbon intensity: Our World in Data 2022–2023 national averages (ourworldindata.org/grapher/carbon-intensity-electricity).</p>
             <p className="note">MRI active power 30 kW: Heye et al. J Magn Reson Imaging 2023 · DOI 10.1002/jmri.28994.</p>
             <p className="note">CT active power 60 kW: Acra 2024 · DOI 10.1016/j.acra.2024.05.004; CJRS 2022 · DOI 10.1177/08465371221133074.</p>
-            <p className="note">AI footprint methodology: Doo et al. Radiology 2024 · DOI 10.1148/radiol.232030.</p>
-            <p className="note">Intervention savings: McKee et al. Radiology 2024 · DOI 10.1148/radiol.240219; ESR Position Paper 2025.</p>
+            <p className="note">AI footprint methodology: Doo FX et al. Radiology 2024 · DOI 10.1148/radiol.232030.</p>
+            <p className="note">Optimal LLM energy efficiency: Doo FX et al. Radiology 2024 · DOI 10.1148/radiol.240320.</p>
+            <p className="note">AI sustainability paradox: Kocak B et al. Insights Imaging 2025 · DOI 10.1186/s13244-025-01962-2.</p>
+            <p className="note">Intervention savings: McKee BJ et al. Radiology 2024 · DOI 10.1148/radiol.240219; ESR Position Paper 2025.</p>
             <p className="note">Full reference list: <a href="https://github.com/takinci/EcoRad/blob/main/sources.md" style={{color:'#2E7D32'}} target="_blank" rel="noreferrer">sources.md on GitHub</a>. All numbers are defaults — replace with locally measured values for publication-quality reporting.</p>
           </section>
         </main>
