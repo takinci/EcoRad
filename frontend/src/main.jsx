@@ -110,6 +110,22 @@ const CLOUD = {
   "Google Cloud":  {pue: 1.10, ci: 0.12}, // Google 2023 Environmental Report (lowest industry PUE)
 };
 
+// GPU TDP reference for eco-label energy estimation.
+// Sources: NVIDIA product datasheets; AWS/GCP GPU instance specs.
+// Researchers should prefer measured energy (CodeCarbon, nvidia-smi) over these estimates.
+const GPU_PRESETS = {
+  "NVIDIA H100 (80GB SXM5)":  {tdpKw: 0.700},
+  "NVIDIA A100 (80GB SXM4)":  {tdpKw: 0.400},
+  "NVIDIA A100 (40GB PCIe)":  {tdpKw: 0.250},
+  "NVIDIA V100 (32GB SXM2)":  {tdpKw: 0.300},
+  "NVIDIA RTX 4090":           {tdpKw: 0.450},
+  "NVIDIA RTX 3090":           {tdpKw: 0.350},
+  "NVIDIA T4":                 {tdpKw: 0.070},
+  "NVIDIA RTX A6000":          {tdpKw: 0.300},
+  "AMD MI250X":                {tdpKw: 0.500},
+  "Custom (enter TDP below)":  {tdpKw: 0.000},
+};
+
 // ── AI architecture library ───────────────────────────────────────────────────
 // trainFactor / inferFactor multiply base model energy by architecture complexity.
 // Sources: LLM-Energy PDF; Clinical-AI PDF; Doo 2024 (10.1148/radiol.232030)
@@ -203,6 +219,8 @@ const META = {
   modelSizes:     Object.keys(AI_MODELS),
   precisions:     Object.keys(PRECISION_FACTOR),
   architectures:  Object.keys(AI_ARCHITECTURES),
+  gpuModels:      Object.keys(GPU_PRESETS),
+  taskTypes:      ["Classification", "Segmentation", "Detection", "Reconstruction", "Report generation", "Triage", "Other"],
 };
 
 // ── Calculation functions ─────────────────────────────────────────────────────
@@ -530,6 +548,98 @@ function downloadCSV(dash) {
   URL.revokeObjectURL(url);
 }
 
+function generateEcoMarkdown(d) {
+  const rows = [
+    ['Project / model',          d.projectName],
+    ['Task type',                d.taskType],
+    ['Architecture',             d.architecture],
+    ['Parameters',               d.paramsMillion],
+    ['Training dataset',         d.datasetSize],
+    ['GPU hardware',             d.gpuHardware],
+    ['Training runs',            `${d.numRuns} experiment${d.numRuns > 1 ? 's' : ''}`],
+    ['Total GPU-hours',          `${d.totalGpuHours} h`],
+    ['Energy per run',           `${d.energyPerRunKwh} kWh${d.energyMeasured ? ' (measured)' : ' (estimated from TDP)'}`],
+    ['Total training energy',    `${d.totalEnergyKwh} kWh`],
+    ['Training CO₂e',       `${d.trainCo2} kgCO₂e`],
+    ['Renewable energy',         `${d.renewablePct}%`],
+    ['Compute provider / PUE',   `${d.cloudProvider} · PUE ${d.pue}`],
+    ['Grid region / CI',         `${d.region} · ${d.ci} kgCO₂e/kWh`],
+    ['Water footprint (cooling)', `${d.waterLitres.toLocaleString()} L`],
+    ...(d.hasInference ? [[
+      'Monthly inference',
+      `${d.inferStudies.toLocaleString()} studies · ${d.inferMonthlyKwh} kWh · ${d.inferCo2Month} kgCO₂e`,
+    ]] : []),
+    ['Estimated with',           `EcoRad · ${d.date}`],
+  ];
+  return [
+    '| Metric | Value |',
+    '|:---|:---|',
+    ...rows.map(([k, v]) => `| ${k} | ${v} |`),
+    '',
+    '> Sustainability label generated with [EcoRad](https://takinci.github.io/EcoRad/).',
+    '> Reporting framework: Doo FX et al. *Radiology* 2024 · DOI 10.1148/radiol.232030.',
+  ].join('\n');
+}
+
+function downloadEcoPNG(d) {
+  const W = 510;
+  const rows = [
+    ['Task type',                d.taskType],
+    ['Architecture',             d.architecture],
+    ['Parameters',               d.paramsMillion],
+    ['Training dataset',         d.datasetSize],
+    ['GPU hardware',             d.gpuHardware],
+    ['Training runs',            `${d.numRuns} exp · ${d.totalGpuHours} GPU-h total`],
+    ['Energy / run',             `${d.energyPerRunKwh} kWh${d.energyMeasured ? ' (measured)' : ' (est.)'}`],
+    ['Total training energy',    `${d.totalEnergyKwh} kWh`],
+    [`Training CO₂e`,       `${d.trainCo2} kgCO₂e`],
+    ['Renewable energy',         `${d.renewablePct}%`],
+    ['Compute / grid',           `${d.cloudProvider} · ${d.region} · ${d.ci} kgCO₂e/kWh`],
+    ['Water footprint (cooling)', `${d.waterLitres.toLocaleString()} L`],
+    ...(d.hasInference ? [['Monthly inference', `${d.inferStudies.toLocaleString()} studies · ${d.inferMonthlyKwh} kWh`]] : []),
+  ];
+  const ROW_H = 26, HEADER_H = 72, FOOTER_H = 28;
+  const H = HEADER_H + 4 + rows.length * ROW_H + 6 + FOOTER_H + 4;
+  const canvas = document.createElement('canvas');
+  canvas.width = W * 2; canvas.height = H * 2;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(2, 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.roundRect(0, 0, W, H, 14); ctx.fill();
+  ctx.strokeStyle = '#2E7D32'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(1, 1, W - 2, H - 2, 13); ctx.stroke();
+  ctx.fillStyle = '#1b5e20';
+  ctx.beginPath(); ctx.roundRect(1, 1, W - 2, HEADER_H, [13, 13, 0, 0]); ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 15px sans-serif';
+  ctx.fillText('EcoRad Eco-label', 16, 26);
+  ctx.font = '13px sans-serif'; ctx.fillStyle = '#A5D6A7';
+  ctx.fillText(d.projectName, 16, 48);
+  ctx.font = '10px sans-serif'; ctx.fillStyle = '#81C784';
+  ctx.fillText(`AI/ML Training Report · Radiology · ${d.date}`, 16, 66);
+  rows.forEach(([k, v], i) => {
+    const y = HEADER_H + 4 + i * ROW_H;
+    ctx.fillStyle = i % 2 === 0 ? '#f1f8f1' : '#ffffff';
+    ctx.fillRect(2, y, W - 4, ROW_H);
+    ctx.fillStyle = '#607d66'; ctx.font = '11px sans-serif';
+    ctx.fillText(k, 14, y + 17);
+    ctx.fillStyle = '#263238'; ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(String(v), 210, y + 17);
+  });
+  const footerY = HEADER_H + 4 + rows.length * ROW_H + 6;
+  ctx.fillStyle = '#e8f5e9';
+  ctx.beginPath(); ctx.roundRect(2, footerY, W - 4, FOOTER_H, [0, 0, 11, 11]); ctx.fill();
+  ctx.fillStyle = '#2E7D32'; ctx.font = '10px sans-serif';
+  ctx.fillText(`EcoRad · ${d.date} · Doo et al. Radiology 2024 · CC BY 4.0`, 14, footerY + 18);
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ecorad_ecolabel_${(d.projectName || 'untitled').replace(/\W+/g, '_')}.png`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  });
+}
+
 const CHART_COLORS = ['#2E7D32','#26A69A','#66BB6A','#4DB6AC','#A5D6A7','#80CBC4'];
 
 // Smart unit formatters — switch unit at sensible thresholds
@@ -584,6 +694,27 @@ function App() {
   const setS = (key, val) => setScen(s => ({...s, [key]: val}));
   const [aiTab,   setAiTab]   = useState('model');
   const [dashTab, setDashTab] = useState('energy');
+  const [ecoCopied, setEcoCopied] = useState(false);
+  const [ecoLabel, setEcoLabel] = useState({
+    projectName: '',
+    taskType: 'Classification',
+    architecture: '',
+    paramsMillion: '',
+    datasetSize: '',
+    gpuModel: 'NVIDIA A100 (80GB SXM4)',
+    customTdpW: '300',
+    gpuCount: '1',
+    trainingHoursPerRun: '',
+    numRuns: '1',
+    energyMeasured: false,
+    energyKwhPerRun: '',
+    cloudProvider: 'Local compute',
+    region: 'Global average',
+    renewablePct: '0',
+    inferStudiesMonth: '',
+    inferKwhPerStudy: '',
+  });
+  const setEco = (key, val) => setEcoLabel(l => ({...l, [key]: val}));
 
   // Print the dashboard: synchronously render it before opening the dialog,
   // then restore the export page once the dialog is dismissed.
@@ -626,6 +757,48 @@ function App() {
   const dash     = useMemo(() => computeDashboard(settings.region, settings.timePeriod, settings.profile, settings.customCi), [settings.region, settings.timePeriod, settings.profile, settings.customCi]);
   const scenario = useMemo(() => computeScenario(scen.intervention, settings.region, settings.timePeriod, settings.profile, settings.customCi, scen.cloudProvider, scen.scannerState), [scen.intervention, settings.region, settings.timePeriod, settings.profile, settings.customCi, scen.cloudProvider, scen.scannerState]);
   const ai       = useMemo(() => computeAI(scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.profile), [scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.profile]);
+
+  const ecoLabelData = useMemo(() => {
+    const gpuTdpKw = ecoLabel.gpuModel === 'Custom (enter TDP below)'
+      ? (parseFloat(ecoLabel.customTdpW) || 300) / 1000
+      : (GPU_PRESETS[ecoLabel.gpuModel]?.tdpKw ?? 0.3);
+    const cf = CLOUD[ecoLabel.cloudProvider] ?? CLOUD['Local compute'];
+    const ci = getCI(ecoLabel.region, settings.customCi);
+    const gpuCount = Math.max(1, parseInt(ecoLabel.gpuCount) || 1);
+    const hoursPerRun = parseFloat(ecoLabel.trainingHoursPerRun) || 0;
+    const numRuns = Math.max(1, parseInt(ecoLabel.numRuns) || 1);
+    const renewablePct = Math.min(100, Math.max(0, parseFloat(ecoLabel.renewablePct) || 0));
+    const totalGpuHours = rnd(gpuCount * hoursPerRun * numRuns, 1);
+    const energyPerRunKwh = ecoLabel.energyMeasured
+      ? (parseFloat(ecoLabel.energyKwhPerRun) || 0)
+      : rnd(gpuTdpKw * gpuCount * hoursPerRun * cf.pue, 2);
+    const totalEnergyKwh = rnd(energyPerRunKwh * numRuns, 2);
+    const effectiveCi = rnd(ci * (1 - renewablePct / 100), 4);
+    const trainCo2 = rnd(totalEnergyKwh * effectiveCi, 2);
+    const waterLitres = Math.round(totalEnergyKwh * WATER_PER_KWH);
+    const inferStudies = parseFloat(ecoLabel.inferStudiesMonth) || 0;
+    const inferKwhPerStudy = parseFloat(ecoLabel.inferKwhPerStudy) || 0;
+    const inferMonthlyKwh = rnd(inferStudies * inferKwhPerStudy, 4);
+    const inferCo2Month = rnd(inferMonthlyKwh * effectiveCi, 4);
+    const gpuLabel = ecoLabel.gpuModel === 'Custom (enter TDP below)'
+      ? `Custom GPU (${ecoLabel.customTdpW || 300} W TDP)`
+      : ecoLabel.gpuModel;
+    return {
+      projectName: ecoLabel.projectName || 'Untitled project',
+      taskType: ecoLabel.taskType,
+      architecture: ecoLabel.architecture || '—',
+      paramsMillion: ecoLabel.paramsMillion ? `${parseFloat(ecoLabel.paramsMillion).toLocaleString()}M params` : '—',
+      datasetSize: ecoLabel.datasetSize ? `${parseFloat(ecoLabel.datasetSize).toLocaleString()} studies` : '—',
+      gpuHardware: gpuCount > 1 ? `${gpuCount}× ${gpuLabel}` : gpuLabel,
+      totalGpuHours, numRuns, energyPerRunKwh, totalEnergyKwh, trainCo2,
+      renewablePct, cloudProvider: ecoLabel.cloudProvider, region: ecoLabel.region,
+      ci, effectiveCi, waterLitres, pue: cf.pue,
+      hasInference: inferStudies > 0 && inferKwhPerStudy > 0,
+      inferMonthlyKwh, inferCo2Month, inferStudies: Math.round(inferStudies),
+      energyMeasured: ecoLabel.energyMeasured,
+      date: new Date().toISOString().slice(0, 7),
+    };
+  }, [ecoLabel, settings.customCi]);
 
   const chartEnergy = {
     labels: dash.byEquipment.map(x => x.equipment),
@@ -677,8 +850,8 @@ function App() {
     responsive:true,
   };
 
-  const pages = ['landing','input','dashboard','ai','scenario','export'];
-  const PAGE_LABELS = {landing:'Landing', input:'Input', dashboard:'Dashboard', ai:'AI', scenario:'Scenario', export:'References/Report'};
+  const pages = ['landing','input','dashboard','ai','scenario','ecolabel','export'];
+  const PAGE_LABELS = {landing:'Landing', input:'Input', dashboard:'Dashboard', ai:'AI', scenario:'Scenario', ecolabel:'Eco-label', export:'References/Report'};
 
   return (
     <>
@@ -1012,6 +1185,205 @@ function App() {
             <section><h2>Before vs after</h2><Suspense fallback={<div style={{height:200}}/>}><Bar data={chartScenario}/></Suspense></section>
           </div>
           <p className="note" style={{marginTop:12}}>Region: {settings.region} — {settings.timePeriod} figures. Change region or time period on the Input page.</p>
+        </main>
+      )}
+
+      {/* ── Eco-label ── */}
+      {page==='ecolabel' && (
+        <main>
+          <h1>Eco-label generator</h1>
+          <p className="note" style={{marginBottom:8}}>
+            Enter your model's actual training metrics to generate a standardised sustainability label for paper or conference submission.
+            Fields align with the AI environmental reporting framework recommended in Doo FX et al. <em>Radiology</em> 2024 (DOI 10.1148/radiol.232030).
+          </p>
+          <p className="note" style={{marginBottom:24}}>
+            Measure training energy with <a href="https://codecarbon.io/" style={{color:'#2E7D32'}} target="_blank" rel="noreferrer">CodeCarbon</a>, <code>nvidia-smi</code>, or your cloud provider's carbon dashboard for the most accurate figures.
+          </p>
+
+          {/* ── Form ── */}
+          <div className="inputSummary" style={{marginBottom:24}}>
+            <h2 style={{marginTop:0, marginBottom:16, color:'#1b5e20'}}>Model &amp; task</h2>
+            <div className="grid grid3">
+              <label>
+                Project / model name
+                <input type="text" value={ecoLabel.projectName} onChange={e=>setEco('projectName',e.target.value)} placeholder="e.g. CXR-Net lung nodule detector"/>
+              </label>
+              <Sel label="Task type" value={ecoLabel.taskType} options={META.taskTypes} onChange={v=>setEco('taskType',v)}/>
+              <label>
+                Architecture (free text)
+                <input type="text" value={ecoLabel.architecture} onChange={e=>setEco('architecture',e.target.value)} placeholder="e.g. EfficientNet-B4"/>
+              </label>
+              <label>
+                Parameters (millions)
+                <input type="number" min="0" value={ecoLabel.paramsMillion} onChange={e=>setEco('paramsMillion',e.target.value)} placeholder="e.g. 19"/>
+              </label>
+              <label>
+                Training dataset (studies / images)
+                <input type="number" min="0" value={ecoLabel.datasetSize} onChange={e=>setEco('datasetSize',e.target.value)} placeholder="e.g. 45000"/>
+              </label>
+            </div>
+          </div>
+
+          <div className="inputSummary" style={{marginBottom:24}}>
+            <h2 style={{marginTop:0, marginBottom:16, color:'#1b5e20'}}>Training compute</h2>
+            <div className="grid grid3">
+              <Sel label="GPU model" value={ecoLabel.gpuModel} options={META.gpuModels} onChange={v=>setEco('gpuModel',v)}/>
+              {ecoLabel.gpuModel === 'Custom (enter TDP below)' && (
+                <label>
+                  GPU TDP (Watts)
+                  <input type="number" min="1" value={ecoLabel.customTdpW} onChange={e=>setEco('customTdpW',e.target.value)} placeholder="e.g. 350"/>
+                </label>
+              )}
+              <label>
+                Number of GPUs
+                <input type="number" min="1" value={ecoLabel.gpuCount} onChange={e=>setEco('gpuCount',e.target.value)} placeholder="e.g. 4"/>
+              </label>
+              <label>
+                Training hours per run
+                <input type="number" min="0" step="0.1" value={ecoLabel.trainingHoursPerRun} onChange={e=>setEco('trainingHoursPerRun',e.target.value)} placeholder="e.g. 18"/>
+              </label>
+              <label>
+                Number of training runs / experiments
+                <input type="number" min="1" value={ecoLabel.numRuns} onChange={e=>setEco('numRuns',e.target.value)} placeholder="e.g. 12"/>
+              </label>
+            </div>
+            <div style={{marginTop:16}}>
+              <label style={{flexDirection:'row', alignItems:'center', gap:12, fontWeight:400, color:'#263238', cursor:'pointer'}}>
+                <input type="checkbox" checked={ecoLabel.energyMeasured} onChange={e=>setEco('energyMeasured',e.target.checked)} style={{width:18,height:18,accentColor:'#2E7D32'}}/>
+                I measured energy directly (CodeCarbon / nvidia-smi) — enter kWh per run below
+              </label>
+              {ecoLabel.energyMeasured && (
+                <div style={{marginTop:12, maxWidth:320}}>
+                  <label>
+                    Measured energy per run (kWh)
+                    <input type="number" min="0" step="0.01" value={ecoLabel.energyKwhPerRun} onChange={e=>setEco('energyKwhPerRun',e.target.value)} placeholder="e.g. 24.0"/>
+                  </label>
+                </div>
+              )}
+              {!ecoLabel.energyMeasured && (
+                <p className="note" style={{marginTop:8}}>
+                  Energy estimated from GPU TDP × count × hours × PUE. Use measured values for higher accuracy.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="inputSummary" style={{marginBottom:24}}>
+            <h2 style={{marginTop:0, marginBottom:16, color:'#1b5e20'}}>Deployment context</h2>
+            <div className="grid grid3">
+              <Sel label="Compute provider" value={ecoLabel.cloudProvider} options={META.cloudProviders} onChange={v=>setEco('cloudProvider',v)}/>
+              <Sel label="Grid region" value={ecoLabel.region} options={META.regions} onChange={v=>setEco('region',v)}/>
+              <label>
+                Renewable energy (%)
+                <input type="number" min="0" max="100" value={ecoLabel.renewablePct} onChange={e=>setEco('renewablePct',e.target.value)} placeholder="0–100"/>
+              </label>
+            </div>
+            <p className="note" style={{marginTop:8}}>Renewable energy % reduces the effective carbon intensity. Set to 100 for green tariff or matched renewable certificates (RECs).</p>
+          </div>
+
+          <div className="inputSummary" style={{marginBottom:32}}>
+            <h2 style={{marginTop:0, marginBottom:16, color:'#1b5e20'}}>Inference / deployment <span style={{fontWeight:400,fontSize:14,color:'#607d66'}}>(optional)</span></h2>
+            <div className="grid grid3">
+              <label>
+                Monthly study volume
+                <input type="number" min="0" value={ecoLabel.inferStudiesMonth} onChange={e=>setEco('inferStudiesMonth',e.target.value)} placeholder="e.g. 1200"/>
+              </label>
+              <label>
+                Inference energy per study (kWh)
+                <input type="number" min="0" step="0.0001" value={ecoLabel.inferKwhPerStudy} onChange={e=>setEco('inferKwhPerStudy',e.target.value)} placeholder="e.g. 0.004"/>
+              </label>
+            </div>
+          </div>
+
+          {/* ── Preview ── */}
+          <h2>Label preview</h2>
+          <div style={{display:'flex', gap:28, flexWrap:'wrap', alignItems:'flex-start', marginBottom:32}}>
+            {/* Visual card */}
+            <div style={{background:'white', border:'2px solid #2E7D32', borderRadius:14, overflow:'hidden', minWidth:320, maxWidth:510, fontFamily:'Inter,sans-serif', boxShadow:'0 8px 30px #1b5e2020', flexShrink:0}}>
+              <div style={{background:'#1b5e20', padding:'14px 18px'}}>
+                <div style={{color:'white', fontWeight:700, fontSize:16, display:'flex', alignItems:'center', gap:8}}>
+                  <Leaf style={{width:16,height:16}}/> EcoRad Eco-label
+                </div>
+                <div style={{color:'#A5D6A7', fontSize:13, marginTop:4}}>{ecoLabelData.projectName}</div>
+                <div style={{color:'#81C784', fontSize:11, marginTop:2}}>AI/ML Training Report · Radiology · {ecoLabelData.date}</div>
+              </div>
+              {[
+                ['Task type',                ecoLabelData.taskType],
+                ['Architecture',             ecoLabelData.architecture],
+                ['Parameters',               ecoLabelData.paramsMillion],
+                ['Training dataset',         ecoLabelData.datasetSize],
+                ['GPU hardware',             ecoLabelData.gpuHardware],
+                ['Training runs',            `${ecoLabelData.numRuns} experiment${ecoLabelData.numRuns > 1 ? 's' : ''}`],
+                ['Total GPU-hours',          `${ecoLabelData.totalGpuHours} h`],
+                ['Energy per run',           `${ecoLabelData.energyPerRunKwh} kWh${ecoLabelData.energyMeasured ? ' (measured)' : ' (est. from TDP)'}`],
+                ['Total training energy',    `${ecoLabelData.totalEnergyKwh} kWh`],
+                ['Training CO₂e',       `${ecoLabelData.trainCo2} kgCO₂e`],
+                ['Renewable energy',         `${ecoLabelData.renewablePct}%`],
+                ['Compute / PUE',            `${ecoLabelData.cloudProvider} · PUE ${ecoLabelData.pue}`],
+                ['Grid region / CI',         `${ecoLabelData.region} · ${ecoLabelData.ci} kgCO₂e/kWh`],
+                ['Water footprint',          `${ecoLabelData.waterLitres.toLocaleString()} L`],
+                ...(ecoLabelData.hasInference ? [['Monthly inference', `${ecoLabelData.inferStudies.toLocaleString()} studies · ${ecoLabelData.inferMonthlyKwh} kWh · ${ecoLabelData.inferCo2Month} kgCO₂e`]] : []),
+              ].map(([k, v], i) => (
+                <div key={k} style={{display:'flex', justifyContent:'space-between', padding:'7px 18px', background: i%2===0 ? '#f1f8f1' : 'white', fontSize:13, gap:12}}>
+                  <span style={{color:'#607d66', flexShrink:0}}>{k}</span>
+                  <span style={{fontWeight:700, color:'#263238', textAlign:'right'}}>{v}</span>
+                </div>
+              ))}
+              <div style={{background:'#e8f5e9', padding:'8px 18px', fontSize:11, color:'#2E7D32'}}>
+                Estimated with EcoRad · {ecoLabelData.date} · Doo et al. Radiology 2024 · CC BY 4.0
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{display:'flex', flexDirection:'column', gap:12, paddingTop:8}}>
+              <button className="download" onClick={()=>downloadEcoPNG(ecoLabelData)}>
+                <Download/> Download PNG badge
+              </button>
+              <button
+                className="download"
+                onClick={()=>{
+                  navigator.clipboard.writeText(generateEcoMarkdown(ecoLabelData));
+                  setEcoCopied(true);
+                  setTimeout(()=>setEcoCopied(false), 2000);
+                }}
+                style={ecoCopied ? {background:'#26A69A'} : undefined}
+              >
+                <FileText/> {ecoCopied ? 'Copied!' : 'Copy markdown table'}
+              </button>
+              <p className="note" style={{maxWidth:220, fontSize:12, margin:0}}>
+                PNG badge: embed in posters, slides, or PDF appendices.<br/><br/>
+                Markdown table: paste into LaTeX supplementary files, GitHub READMEs, or preprint appendices.
+              </p>
+            </div>
+          </div>
+
+          {/* ── Markdown preview ── */}
+          <section>
+            <h2>Markdown table</h2>
+            <pre style={{background:'#f1f8f1', borderRadius:14, padding:'16px 20px', fontSize:12, lineHeight:1.6, overflow:'auto', border:'1px solid #c8e6c9', fontFamily:'monospace', whiteSpace:'pre-wrap'}}>
+              {generateEcoMarkdown(ecoLabelData)}
+            </pre>
+          </section>
+
+          {/* ── Paper text ── */}
+          <section style={{marginTop:24}}>
+            <h2>Ready-to-paste paragraph</h2>
+            <p className="note" style={{marginBottom:8}}>Copy this into a dedicated <strong>Environmental Impact</strong> section or supplementary material of your submission.</p>
+            <pre style={{background:'#f1f8f1', borderRadius:14, padding:'16px 20px', fontSize:12, lineHeight:1.8, border:'1px solid #c8e6c9', fontFamily:'monospace', whiteSpace:'pre-wrap'}}>
+              {`Environmental impact. ${ecoLabelData.projectName} was trained using ${ecoLabelData.gpuHardware} ` +
+               `for ${ecoLabelData.totalGpuHours} GPU-hours across ${ecoLabelData.numRuns} experiment${ecoLabelData.numRuns>1?'s':''}. ` +
+               `Total training energy consumption was ${ecoLabelData.totalEnergyKwh} kWh ` +
+               `(${ecoLabelData.energyPerRunKwh} kWh per run${ecoLabelData.energyMeasured ? ', directly measured' : ', estimated from GPU TDP'}), ` +
+               `with an estimated carbon footprint of ${ecoLabelData.trainCo2} kgCO₂e ` +
+               `(${ecoLabelData.cloudProvider}; grid: ${ecoLabelData.region}, ${ecoLabelData.ci} kgCO₂e/kWh; ` +
+               `renewable energy: ${ecoLabelData.renewablePct}%; PUE: ${ecoLabelData.pue}). ` +
+               `The estimated cooling water footprint is ${ecoLabelData.waterLitres.toLocaleString()} L.` +
+               (ecoLabelData.hasInference
+                 ? ` Monthly inference for ${ecoLabelData.inferStudies.toLocaleString()} studies consumes ${ecoLabelData.inferMonthlyKwh} kWh (${ecoLabelData.inferCo2Month} kgCO₂e/month).`
+                 : '') +
+               ` Sustainability metrics were estimated using EcoRad (${ecoLabelData.date}), following the framework of Doo FX et al. (Radiology 2024, DOI: 10.1148/radiol.232030).`}
+            </pre>
+          </section>
         </main>
       )}
 
