@@ -848,6 +848,14 @@ function downloadCloudCSV(result, tracker) {
   URL.revokeObjectURL(url);
 }
 
+const AI_TIERS = [
+  {tier:'A', label:'Low footprint',  max:10,       color:'#1b5e20', bg:'#e8f5e9'},
+  {tier:'B', label:'Moderate',       max:100,      color:'#2E7D32', bg:'#dcedc8'},
+  {tier:'C', label:'Significant',    max:1000,     color:'#F57F17', bg:'#fff8e1'},
+  {tier:'D', label:'High',           max:5000,     color:'#E65100', bg:'#fff3e0'},
+  {tier:'E', label:'Very high',      max:Infinity, color:'#c62828', bg:'#ffebee'},
+];
+
 const DEPT_TIERS = [
   {tier:'A', label:'Exemplary',     max:0.5,      color:'#1b5e20', bg:'#e8f5e9'},
   {tier:'B', label:'Good',          max:1.5,      color:'#2E7D32', bg:'#dcedc8'},
@@ -1232,6 +1240,9 @@ function App() {
     const gpuLabel = ecoLabel.gpuModel === 'Custom (enter TDP below)'
       ? `Custom GPU (${ecoLabel.customTdpW || 300} W TDP)`
       : ecoLabel.gpuModel;
+    const aiTierObj = totalEnergyKwh > 0
+      ? (AI_TIERS.find(t => trainCo2 <= t.max) ?? AI_TIERS[4])
+      : {tier:'—', label:'Enter data above', color:'#90a4ae', bg:'#f5f5f5'};
     return {
       projectName: ecoLabel.projectName || 'Untitled project',
       taskType: ecoLabel.taskType,
@@ -1245,6 +1256,7 @@ function App() {
       hasInference: inferStudies > 0 && inferKwhPerStudy > 0,
       inferMonthlyKwh, inferCo2Month, inferStudies: Math.round(inferStudies),
       energyMeasured: ecoLabel.energyMeasured,
+      tier: aiTierObj.tier, tierLabel: aiTierObj.label, tierColor: aiTierObj.color, tierBg: aiTierObj.bg,
       date: new Date().toISOString().slice(0, 7),
     };
   }, [ecoLabel, settings.customCi]);
@@ -2224,6 +2236,16 @@ function App() {
                 PNG badge: embed in posters, slides, or PDF appendices.<br/><br/>
                 Markdown table: paste into LaTeX supplementary files, GitHub READMEs, or preprint appendices.
               </p>
+              <div style={{marginTop:8}}>
+                <p className="note" style={{fontSize:12,marginBottom:8,fontWeight:700}}>Tier reference (total training kgCO₂e):</p>
+                {AI_TIERS.map(t=>(
+                  <div key={t.tier} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:4,fontWeight:ecoLabelData.tier===t.tier?700:400,color:ecoLabelData.tier===t.tier?'#263238':'#607d66'}}>
+                    <span style={{background:t.color,color:'white',borderRadius:4,padding:'1px 7px',fontWeight:900,fontSize:14,minWidth:18,textAlign:'center'}}>{t.tier}</span>
+                    <span>{t.label}</span>
+                    <span style={{marginLeft:'auto',fontFamily:'monospace',fontSize:11}}>{t.tier==='A'?'< 10':t.max===Infinity?'> 5,000':`≤ ${t.max.toLocaleString()}`}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
