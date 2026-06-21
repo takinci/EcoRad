@@ -1181,20 +1181,119 @@ function App() {
 
           {/* ── What it means (equivalencies — first) ── */}
           <section id="dash-equiv" className="aiSection" style={{background:'none',boxShadow:'none',padding:0}}>
-            <h2 style={{marginBottom:12}}>What it means in everyday terms <span style={{fontWeight:400,fontSize:14,color:'#607d66'}}>(Scope 2 electricity)</span></h2>
-            <div className="cards">
-              <Card icon={<Car/>}      title="km driven by car"     value={Math.round((dash.scopes.scope2Kg+landingAICo2)/0.17).toLocaleString()} sub="Average petrol car at 0.17 kgCO₂/km (DEFRA 2023)."/>
-              <Card icon={<Plane/>}    title="Short-haul flights"   value={String(rnd((dash.scopes.scope2Kg+landingAICo2)/255,1))}               sub="Economy passenger seats at 255 kgCO₂ each (ICAO 2023)."/>
-              <Card icon={<TreePine/>} title="Tree-years to offset" value={Math.round((dash.scopes.scope2Kg+landingAICo2)/21).toLocaleString()}   sub="Trees growing for 1 year absorbing ~21 kgCO₂/yr each."/>
-              <Card icon={<Activity/>} title="Smartphone charges"   value={Math.round(dash.totals.kwh/0.012).toLocaleString()}                    sub="Full charges at 12 Wh each."/>
+            <h2 style={{marginBottom:4}}>What it means in everyday terms</h2>
+            <p className="note" style={{marginBottom:16}}>
+              Inspired by the <a href="https://www.epa.gov/energy/greenhouse-gas-equivalencies-calculator" style={{color:'#2E7D32'}} target="_blank" rel="noreferrer">EPA Greenhouse Gas Equivalencies Calculator</a>.
+              Switch between Scope 2 (electricity only) or all scopes below.
+            </p>
+
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
+              <button className={equivScope==='scope2'?'on':''} onClick={()=>setEquivScope('scope2')} style={{padding:'7px 14px',fontSize:13}}>Scope 2 — electricity only</button>
+              <button className={equivScope==='all'?'on':''} onClick={()=>setEquivScope('all')} style={{padding:'7px 14px',fontSize:13}}>All scopes — full lifecycle</button>
             </div>
+            <p className="note" style={{marginBottom:24,fontSize:12}}>
+              {equivScope==='scope2' ? 'Showing Scope 2 (purchased electricity). Best for comparing with published benchmarks.' : 'Showing Scope 1 + 2 + 3 (direct + electricity + embodied + patient travel). Full lifecycle view.'}
+              {' '}Change settings on the <button onClick={()=>setPage('landing')} style={{background:'none',border:'none',color:'#2E7D32',cursor:'pointer',padding:'0 2px',fontSize:12,fontWeight:600,boxShadow:'none'}}>Home page →</button>
+            </p>
+
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:20,marginBottom:32}}>
+              {[
+                {icon:<Car style={{width:40,height:40}}/>,     n:fmtBig(equivData.car_km),        unit:`km driven by car${dash.totals.label}`,      note:'Avg petrol car at 0.17 kgCO₂/km (DEFRA 2023).', bg:'#e8f5e9'},
+                {icon:<Plane style={{width:40,height:40}}/>,   n:fmtBig(equivData.flights_short), unit:`short-haul flights${dash.totals.label}`,     note:'Economy seat, ~255 kgCO₂e each (ICAO 2023).',   bg:'#e0f7fa'},
+                {icon:<TreePine style={{width:40,height:40}}/>,n:fmtBig(equivData.trees_year),    unit:'trees absorbing for 1 year',                 note:'One mature tree sequesters ~21 kgCO₂/yr.',       bg:'#f1f8e9'},
+                {icon:<Home style={{width:40,height:40}}/>,    n:fmtBig(equivData.homes),         unit:`home electricity years${dash.totals.label}`, note:'EU average household: 3,500 kWh/yr.',            bg:'#fff8e1'},
+              ].map((c,i)=>(
+                <div key={i} style={{background:c.bg,borderRadius:28,padding:'32px 20px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:10,boxShadow:'0 8px 30px #1b5e2012'}}>
+                  <div style={{color:'#2E7D32'}}>{c.icon}</div>
+                  <div style={{fontSize:46,fontWeight:900,color:'#1b5e20',lineHeight:1}}>{c.n}</div>
+                  <div style={{fontWeight:700,fontSize:15,color:'#263238'}}>{c.unit}</div>
+                  <div style={{fontSize:12,color:'#607d66',lineHeight:1.5}}>{c.note}</div>
+                </div>
+              ))}
+            </div>
+
             {landingAIOpen && landingAICo2>0 && (
-              <p className="note" style={{marginTop:10}}>AI tools contribute <strong>{fmtCo2(landingAICo2)}</strong>{dash.totals.label} — {rnd(landingAICo2/(dash.scopes.scope2Kg+landingAICo2)*100,1)}% of total.{' '}
+              <p className="note" style={{marginBottom:20,padding:'10px 14px',background:'#f1f8f1',borderRadius:12}}>
+                AI tools add approx. <strong>{fmtCo2(landingAICo2)}</strong>{dash.totals.label} on top of the figures above.{' '}
                 <button onClick={()=>setPage('ai')} style={{background:'none',border:'none',color:'#2E7D32',cursor:'pointer',padding:'0 2px',fontSize:13,fontWeight:600,boxShadow:'none'}}>Full AI analysis →</button>
               </p>
             )}
-            <p className="note" style={{marginTop:8}}>Also equivalent to <strong>{dash.equivalencies.household_years}</strong> household electricity years.{' '}
-              <button onClick={()=>setPage('equiv')} style={{background:'none',border:'none',color:'#2E7D32',cursor:'pointer',padding:'0 2px',fontSize:13,fontWeight:600,boxShadow:'none'}}>More equivalencies →</button>
+
+            <section style={{marginBottom:28}}>
+              <h2 style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><Car style={{color:'#2E7D32'}}/> Transport</h2>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:16}}>
+                {[
+                  {icon:<Car/>,   n:fmtBig(equivData.car_years),    unit:'cars driven for a full year',     note:'EU avg passenger car emits 2.1 tCO₂e/yr (EEA 2023).'},
+                  {icon:<Plane/>, n:fmtBig(equivData.flights_short), unit:'short-haul economy flights',      note:'~255 kgCO₂e per seat (ICAO 2023). London–Rome class.'},
+                  {icon:<Plane/>, n:fmtBig(equivData.flights_long),  unit:'transatlantic long-haul flights', note:'~1,200 kgCO₂e per economy seat (ICAO 2023).'},
+                  {icon:<Car/>,   n:fmtBig(equivData.car_km),        unit:'km driven at 0.17 kgCO₂/km',     note:'Avg UK petrol car (DEFRA 2023). Diesel ~0.17 similar.'},
+                ].map((c,i)=>(
+                  <div key={i} className="card" style={{textAlign:'center',padding:'20px 16px'}}>
+                    <div style={{color:'#2E7D32',marginBottom:6}}>{c.icon}</div>
+                    <div style={{fontSize:34,fontWeight:900,color:'#1b5e20',lineHeight:1.1}}>{c.n}</div>
+                    <div style={{fontWeight:700,fontSize:13,color:'#263238',margin:'6px 0'}}>{c.unit}</div>
+                    <div style={{fontSize:11,color:'#607d66',lineHeight:1.5}}>{c.note}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section style={{marginBottom:28}}>
+              <h2 style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><Home style={{color:'#2E7D32'}}/> Home &amp; everyday life</h2>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:16}}>
+                {[
+                  {icon:<Lightbulb/>,n:fmtBig(equivData.led_years),    unit:'LED bulb-switches',     note:'Switching one 60 W incandescent to 10 W LED saves ~50 kWh/yr each.'},
+                  {icon:<Activity/>, n:fmtBig(equivData.phone_charges), unit:'smartphone charges',    note:'Full charge of a modern smartphone at ~12 Wh each.'},
+                  {icon:<Monitor/>,  n:fmtBig(equivData.stream_hours),  unit:'hours of TV streaming', note:'TV device consumes ~100 W. Equivalent screen time.'},
+                  {icon:<Coffee/>,   n:fmtBig(equivData.tea_cups),      unit:'cups of tea or coffee', note:'Boiling 250 ml in a kettle uses ~0.025 kWh per cup.'},
+                  {icon:<Cpu/>,      n:fmtBig(equivData.laptop_days),   unit:'laptop working days',   note:'30 W laptop × 8 h/day = 0.24 kWh/day average.'},
+                ].map((c,i)=>(
+                  <div key={i} className="card" style={{textAlign:'center',padding:'20px 16px'}}>
+                    <div style={{color:'#26A69A',marginBottom:6}}>{c.icon}</div>
+                    <div style={{fontSize:34,fontWeight:900,color:'#1b5e20',lineHeight:1.1}}>{c.n}</div>
+                    <div style={{fontWeight:700,fontSize:13,color:'#263238',margin:'6px 0'}}>{c.unit}</div>
+                    <div style={{fontSize:11,color:'#607d66',lineHeight:1.5}}>{c.note}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section style={{marginBottom:28}}>
+              <h2 style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><TreePine style={{color:'#2E7D32'}}/> Nature &amp; carbon sinks</h2>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:16}}>
+                {[
+                  {icon:<TreePine/>,n:fmtBig(equivData.trees_year), unit:'trees absorbing CO₂ for 1 year', note:'One mature tree sequesters ~21 kgCO₂/yr (IPCC avg).'},
+                  {icon:<Leaf/>,    n:fmtBig(equivData.forest_ha),  unit:'hectares of temperate forest',   note:'1 ha temperate forest sequesters ~5.5 tCO₂/yr (FAO).'},
+                ].map((c,i)=>(
+                  <div key={i} className="card" style={{textAlign:'center',padding:'20px 16px',background:'#f9fbe7'}}>
+                    <div style={{color:'#33691e',marginBottom:6}}>{c.icon}</div>
+                    <div style={{fontSize:34,fontWeight:900,color:'#1b5e20',lineHeight:1.1}}>{c.n}</div>
+                    <div style={{fontWeight:700,fontSize:13,color:'#263238',margin:'6px 0'}}>{c.unit}</div>
+                    <div style={{fontSize:11,color:'#607d66',lineHeight:1.5}}>{c.note}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section style={{marginBottom:28}}>
+              <h2 style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><Flame style={{color:'#c62828'}}/> Fossil fuel equivalent</h2>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:16}}>
+                {[
+                  {icon:<Droplets/>,n:fmtBig(equivData.barrels_oil), unit:'barrels of crude oil burned', note:'1 barrel crude oil combustion ≈ 430 kgCO₂e (EPA).'},
+                  {icon:<Flame/>,   n:fmtBig(equivData.tonnes_coal), unit:'tonnes of coal burned',       note:'Bituminous coal ≈ 2,350 kgCO₂/tonne combustion (IPCC).'},
+                ].map((c,i)=>(
+                  <div key={i} className="card" style={{textAlign:'center',padding:'20px 16px',background:'#fff3e0'}}>
+                    <div style={{color:'#e65100',marginBottom:6}}>{c.icon}</div>
+                    <div style={{fontSize:34,fontWeight:900,color:'#bf360c',lineHeight:1.1}}>{c.n}</div>
+                    <div style={{fontWeight:700,fontSize:13,color:'#263238',margin:'6px 0'}}>{c.unit}</div>
+                    <div style={{fontSize:11,color:'#607d66',lineHeight:1.5}}>{c.note}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <p className="note" style={{borderTop:'1px solid #c8e6c9',paddingTop:16}}>
+              Sources: DEFRA 2023 (car emissions); ICAO 2023 (aviation); EEA 2023 (EU household energy); IPCC (coal &amp; forest carbon); EPA (crude oil); FAO (forest sequestration).
             </p>
           </section>
 
@@ -1270,135 +1369,6 @@ function App() {
       )}
 
       {/* ── Equivalencies ── */}
-      {page==='equiv' && (
-        <main>
-          <h1>Real-world equivalencies</h1>
-          <p className="note" style={{marginBottom:24}}>
-            What your department's emissions mean in everyday terms — inspired by the{' '}
-            <a href="https://www.epa.gov/energy/greenhouse-gas-equivalencies-calculator" style={{color:'#2E7D32'}} target="_blank" rel="noreferrer">EPA Greenhouse Gas Equivalencies Calculator</a>.
-            Switch between Scope 2 only (electricity) or all scopes to see the full picture.
-          </p>
-
-          {/* ── Scope toggle ── */}
-          <div className="stickyControls" style={{marginBottom:28}}>
-            <div className="aiSummary">
-              <span>{settings.profile} · <strong>{settings.region}</strong> · {settings.timePeriod}</span>
-              <span>Energy <b>{fmtKwh(dash.totals.kwh)}{dash.totals.label}</b></span>
-              <span>Scope 2 CO₂ <b>{fmtCo2(dash.scopes.scope2Kg)}</b></span>
-              <span>All scopes <b>{fmtCo2(dash.scopes.scope1Kg + dash.scopes.scope2Kg + dash.scopes.scope3Kg)}</b></span>
-            </div>
-            <div className="aiTabs" style={{marginTop:12}}>
-              <button className={equivScope==='scope2'?'on':''} onClick={()=>setEquivScope('scope2')}>Scope 2 — electricity only</button>
-              <button className={equivScope==='all'?'on':''} onClick={()=>setEquivScope('all')}>All scopes — full lifecycle</button>
-            </div>
-            <p className="note" style={{marginTop:8, fontSize:12}}>
-              {equivScope==='scope2'
-                ? 'Showing Scope 2 (purchased electricity). Best for comparing with published benchmarks.'
-                : `Showing Scope 1 + 2 + 3 (direct + electricity + embodied + patient travel). Full lifecycle view.`}
-              {' '}Change profile or region on the <button onClick={()=>setPage('input')} style={{background:'none',color:'#2E7D32',padding:'0 4px',fontSize:12,boxShadow:'none'}}>Input page →</button>
-            </p>
-          </div>
-
-          {/* ── Hero cards ── */}
-          <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(210px,1fr))', gap:20, marginBottom:40}}>
-            {[
-              {icon:<Car  style={{width:40,height:40}}/>, n:fmtBig(equivData.car_km),        unit:`km driven by car${dash.totals.label}`,       note:'Avg petrol car at 0.17 kgCO₂/km (DEFRA 2023).', bg:'#e8f5e9'},
-              {icon:<Plane style={{width:40,height:40}}/>, n:fmtBig(equivData.flights_short), unit:`short-haul flights${dash.totals.label}`,      note:'Economy seat, ~255 kgCO₂e each (ICAO 2023).',   bg:'#e0f7fa'},
-              {icon:<TreePine style={{width:40,height:40}}/>, n:fmtBig(equivData.trees_year), unit:`trees absorbing for 1 year`,                  note:'One mature tree sequesters ~21 kgCO₂/yr.',       bg:'#f1f8e9'},
-              {icon:<Home style={{width:40,height:40}}/>, n:fmtBig(equivData.homes),          unit:`home electricity years${dash.totals.label}`,  note:'EU average household: 3,500 kWh/yr.',            bg:'#fff8e1'},
-            ].map((c,i)=>(
-              <div key={i} style={{background:c.bg, borderRadius:28, padding:'32px 20px', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:10, boxShadow:'0 8px 30px #1b5e2012'}}>
-                <div style={{color:'#2E7D32'}}>{c.icon}</div>
-                <div style={{fontSize:46, fontWeight:900, color:'#1b5e20', lineHeight:1}}>{c.n}</div>
-                <div style={{fontWeight:700, fontSize:15, color:'#263238'}}>{c.unit}</div>
-                <div style={{fontSize:12, color:'#607d66', lineHeight:1.5}}>{c.note}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* ── Transport ── */}
-          <section style={{marginBottom:32}}>
-            <h2 style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><Car style={{color:'#2E7D32'}}/> Transport</h2>
-            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(190px,1fr))', gap:16}}>
-              {[
-                {icon:<Car/>, n:fmtBig(equivData.car_years), unit:'cars driven for a full year', note:'EU avg passenger car emits 2.1 tCO₂e/yr (EEA 2023).'},
-                {icon:<Plane/>, n:fmtBig(equivData.flights_short), unit:'short-haul economy flights', note:'~255 kgCO₂e per seat (ICAO 2023). London–Rome class.'},
-                {icon:<Plane/>, n:fmtBig(equivData.flights_long),  unit:'transatlantic long-haul flights', note:'~1,200 kgCO₂e per economy seat (ICAO 2023).'},
-                {icon:<Car/>, n:fmtBig(equivData.car_km), unit:'km driven at 0.17 kgCO₂/km', note:'Avg UK petrol car (DEFRA 2023). Diesel ~0.17 similar.'},
-              ].map((c,i)=>(
-                <div key={i} className="card" style={{textAlign:'center', padding:'20px 16px'}}>
-                  <div style={{color:'#2E7D32', marginBottom:6}}>{c.icon}</div>
-                  <div style={{fontSize:34, fontWeight:900, color:'#1b5e20', lineHeight:1.1}}>{c.n}</div>
-                  <div style={{fontWeight:700, fontSize:13, color:'#263238', margin:'6px 0'}}>{c.unit}</div>
-                  <div style={{fontSize:11, color:'#607d66', lineHeight:1.5}}>{c.note}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* ── Home & everyday ── */}
-          <section style={{marginBottom:32}}>
-            <h2 style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><Home style={{color:'#2E7D32'}}/> Home &amp; everyday life</h2>
-            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(190px,1fr))', gap:16}}>
-              {[
-                {icon:<Lightbulb/>, n:fmtBig(equivData.led_years),     unit:'LED bulb-switches', note:'Switching one 60 W incandescent to 10 W LED saves ~50 kWh/yr each.'},
-                {icon:<Activity/>,  n:fmtBig(equivData.phone_charges),  unit:'smartphone charges', note:'Full charge of a modern smartphone at ~12 Wh each.'},
-                {icon:<Monitor/>,   n:fmtBig(equivData.stream_hours),   unit:'hours of TV streaming', note:'TV device consumes ~100 W. Equivalent screen time.'},
-                {icon:<Coffee/>,    n:fmtBig(equivData.tea_cups),       unit:'cups of tea or coffee', note:'Boiling 250 ml in a kettle uses ~0.025 kWh per cup.'},
-                {icon:<Cpu/>,       n:fmtBig(equivData.laptop_days),    unit:'laptop working days', note:'30 W laptop × 8 h/day = 0.24 kWh/day average.'},
-              ].map((c,i)=>(
-                <div key={i} className="card" style={{textAlign:'center', padding:'20px 16px'}}>
-                  <div style={{color:'#26A69A', marginBottom:6}}>{c.icon}</div>
-                  <div style={{fontSize:34, fontWeight:900, color:'#1b5e20', lineHeight:1.1}}>{c.n}</div>
-                  <div style={{fontWeight:700, fontSize:13, color:'#263238', margin:'6px 0'}}>{c.unit}</div>
-                  <div style={{fontSize:11, color:'#607d66', lineHeight:1.5}}>{c.note}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* ── Fossil fuels ── */}
-          <section style={{marginBottom:32}}>
-            <h2 style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><Flame style={{color:'#c62828'}}/> Fossil fuel equivalent</h2>
-            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(190px,1fr))', gap:16}}>
-              {[
-                {icon:<Droplets/>,  n:fmtBig(equivData.barrels_oil),  unit:'barrels of crude oil burned', note:'1 barrel crude oil combustion ≈ 430 kgCO₂e (EPA).'},
-                {icon:<Flame/>, n:fmtBig(equivData.tonnes_coal),  unit:'tonnes of coal burned', note:'Bituminous coal ≈ 2,350 kgCO₂/tonne combustion (IPCC).'},
-              ].map((c,i)=>(
-                <div key={i} className="card" style={{textAlign:'center', padding:'20px 16px', background:'#fff3e0'}}>
-                  <div style={{color:'#e65100', marginBottom:6}}>{c.icon}</div>
-                  <div style={{fontSize:34, fontWeight:900, color:'#bf360c', lineHeight:1.1}}>{c.n}</div>
-                  <div style={{fontWeight:700, fontSize:13, color:'#263238', margin:'6px 0'}}>{c.unit}</div>
-                  <div style={{fontSize:11, color:'#607d66', lineHeight:1.5}}>{c.note}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* ── Nature ── */}
-          <section style={{marginBottom:32}}>
-            <h2 style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}><TreePine style={{color:'#2E7D32'}}/> Nature &amp; carbon sinks</h2>
-            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(190px,1fr))', gap:16}}>
-              {[
-                {icon:<TreePine/>, n:fmtBig(equivData.trees_year),  unit:'trees absorbing CO₂ for 1 year', note:'One mature tree sequesters ~21 kgCO₂/yr (IPCC avg).'},
-                {icon:<Leaf/>,     n:fmtBig(equivData.forest_ha),   unit:'hectares of temperate forest', note:'1 ha temperate forest sequesters ~5.5 tCO₂/yr (FAO). Protecting this area offsets these emissions.'},
-              ].map((c,i)=>(
-                <div key={i} className="card" style={{textAlign:'center', padding:'20px 16px', background:'#f9fbe7'}}>
-                  <div style={{color:'#33691e', marginBottom:6}}>{c.icon}</div>
-                  <div style={{fontSize:34, fontWeight:900, color:'#1b5e20', lineHeight:1.1}}>{c.n}</div>
-                  <div style={{fontWeight:700, fontSize:13, color:'#263238', margin:'6px 0'}}>{c.unit}</div>
-                  <div style={{fontSize:11, color:'#607d66', lineHeight:1.5}}>{c.note}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <p className="note" style={{marginTop:8, borderTop:'1px solid #c8e6c9', paddingTop:16}}>
-            Sources: DEFRA 2023 (car emissions); ICAO 2023 (aviation); EEA 2023 (EU household energy); IPCC (coal & forest carbon); EPA (crude oil); FAO (forest sequestration). All equivalencies use Scope 2 electricity CO₂ unless "All scopes" is selected. Change the department profile, region, or time period on the Input page to update all numbers.
-          </p>
-        </main>
-      )}
-
       {/* ── AI ── */}
       {page==='ai' && (
         <main>
