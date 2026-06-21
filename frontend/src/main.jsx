@@ -1000,7 +1000,7 @@ function downloadEcoPNG(d) {
   ctx.fillStyle = '#1b5e20';
   ctx.beginPath(); ctx.roundRect(1, 1, W - 2, HEADER_H, [13, 13, 0, 0]); ctx.fill();
   ctx.fillStyle = '#ffffff'; ctx.font = 'bold 15px sans-serif';
-  ctx.fillText('EcoRad Eco-label', 16, 26);
+  ctx.fillText('EcoRad EcoLabel', 16, 26);
   ctx.font = '13px sans-serif'; ctx.fillStyle = '#A5D6A7';
   ctx.fillText(d.projectName, 16, 48);
   ctx.font = '10px sans-serif'; ctx.fillStyle = '#81C784';
@@ -2184,7 +2184,7 @@ function App() {
             <div style={{background:'white', border:'2px solid #2E7D32', borderRadius:14, overflow:'hidden', minWidth:320, maxWidth:510, fontFamily:'Inter,sans-serif', boxShadow:'0 8px 30px #1b5e2020', flexShrink:0}}>
               <div style={{background:'#1b5e20', padding:'14px 18px'}}>
                 <div style={{color:'white', fontWeight:700, fontSize:16, display:'flex', alignItems:'center', gap:8}}>
-                  <Leaf style={{width:16,height:16}}/> EcoRad Eco-label
+                  <Leaf style={{width:16,height:16}}/> EcoRad EcoLabel
                 </div>
                 <div style={{color:'#A5D6A7', fontSize:13, marginTop:4}}>{ecoLabelData.projectName}</div>
                 <div style={{color:'#81C784', fontSize:11, marginTop:2}}>AI/ML Training Report · Radiology · {ecoLabelData.date}</div>
