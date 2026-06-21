@@ -1218,7 +1218,7 @@ function App() {
   };
 
   const pages = ['landing','dashboard','ai','cloudtrack','scenario','ecolabel'];
-  const PAGE_LABELS = {landing:'Home', dashboard:'Dashboard', ai:'AI', cloudtrack:'Cloud Carbon', scenario:'Scenario', ecolabel:'Eco-label'};
+  const PAGE_LABELS = {landing:'Home', dashboard:'Radiology Dashboard', ai:'AI Dashboard', cloudtrack:'Cloud Carbon', scenario:'Scenario', ecolabel:'EcoLabel'};
 
   return (
     <>
