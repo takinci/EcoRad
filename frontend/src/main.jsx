@@ -717,6 +717,137 @@ function downloadCSV(dash) {
   URL.revokeObjectURL(url);
 }
 
+function downloadAICSV(ai, scen, region) {
+  const q    = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const row  = cells => cells.map(q).join(',');
+  const blank = '';
+
+  const lines = [
+    row(['EcoRad AI Sustainability Report']),
+    row(['Region', region, 'Cloud / deployment', scen.cloudProvider]),
+    row(['Architecture', scen.architecture, 'Model size', scen.modelSize]),
+    row(['Precision / AMP', scen.precision, 'Cloud CI (kgCO2e/kWh)', ai.cloudCi]),
+    row(['PUE', ai.pue]),
+    blank,
+
+    row(['TRAINING (one-time)']),
+    row(['Metric', 'Value', 'Unit']),
+    row(['Training energy',              ai.training.kwhTotal,    'kWh']),
+    row(['Training CO2e',                ai.training.kgCo2e,      'kgCO2e']),
+    row(['Estimated GPU compute',        ai.training.gpuHours,    'h']),
+    row(['Amortised training / month',   ai.training.kwhAmortised,'kWh/mo (36-month deployment)']),
+    blank,
+
+    row(['TESTING / VALIDATION (one-time)']),
+    row(['Metric', 'Value', 'Unit']),
+    row(['Test set energy',              ai.testing.kwhTotal,     'kWh']),
+    row(['Test set CO2e',                ai.testing.kgCo2e,       'kgCO2e']),
+    row(['Test set studies',             ai.testing.studies,      'studies']),
+    blank,
+
+    row(['INFERENCE & DEPLOYMENT (monthly)']),
+    row(['Metric', 'Value', 'Unit']),
+    row(['Studies per month',            ai.inference.studies,        'studies/mo']),
+    row(['Energy per study',             ai.inference.kwhPerStudy,    'kWh/study']),
+    row(['Monthly inference energy',     ai.inference.kwhMonthly,     'kWh/mo']),
+    row(['Lifetime inference energy',    ai.inference.kwhLifetime,    'kWh (36 months)']),
+    row(['AMP energy saving',            ai.ampSavingPct,             '%']),
+    blank,
+
+    row(['CARBON FOOTPRINT (monthly)']),
+    row(['Metric', 'Value', 'Unit']),
+    row(['Gross CO2e',                   ai.grossKgCo2e,              'kgCO2e/mo']),
+    row(['Embodied GPU carbon',          ai.embGpuKgCo2e,             'kgCO2e/mo (amortised)']),
+    row(['Clinical savings',             ai.savingsKgCo2e,            'kgCO2e/mo']),
+    row(['Net CO2e impact',              ai.netKgCo2e,                'kgCO2e/mo']),
+    blank,
+
+    row(['CLINICAL CO-BENEFITS (monthly)']),
+    row(['Metric', 'Value', 'Unit']),
+    row(['Scan time reduction',          ai.scanTimeReductPct,        '%']),
+    row(['Scanner energy saved',         ai.scanEnergySaved,          'kWh/mo']),
+    row(['Low-value scans avoided',      ai.scansAvoided,             'scans/mo']),
+    row(['Rebound effect risk',          ai.reboundRisk,              '']),
+    blank,
+
+    row(['EFFICIENCY & RESOURCES']),
+    row(['Metric', 'Value', 'Unit']),
+    row(['Efficiency ratio',             ai.efficiencyRatio,          'acc%/kWh']),
+    row(['Diagnostic accuracy',          `${rnd(ai.accuracy * 100, 0)}%`,'']),
+    row(['Monthly water footprint',      ai.waterLitres,              'L']),
+  ];
+
+  const blob = new Blob([lines.join('\n')], {type: 'text/csv'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `ecorad_ai_${region}_${scen.cloudProvider}.csv`.replace(/\s+/g, '_');
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadCloudCSV(result, tracker) {
+  const q    = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const row  = cells => cells.map(q).join(',');
+  const blank = '';
+
+  const lines = [
+    row(['EcoRad Cloud Carbon Report']),
+    row(['Provider', tracker.provider, 'Region', tracker.region]),
+    row(['Grid CI (kgCO2e/kWh)', result.regionCi, 'Effective CI', result.ci]),
+    row(['PUE', result.pue, 'Renewables (%)', result.renewable]),
+    blank,
+
+    row(['MONTHLY TOTALS']),
+    row(['Metric', 'Value', 'Unit']),
+    row(['Total energy (with PUE)',    result.totalKwh,        'kWh/mo']),
+    row(['Total CO2e',                 result.totalCo2,        'kgCO2e/mo']),
+    row(['Compute energy',             result.totalComputeKwh, 'kWh/mo']),
+    row(['Storage energy',             result.totalStorageKwh, 'kWh/mo']),
+    row(['Network energy',             result.netKwh,          'kWh/mo']),
+    row(['Network data transfer',      result.netGb,           'GB/mo']),
+    row(['Network CO2e',               result.netCo2,          'kgCO2e/mo']),
+    blank,
+
+    row(['COMPUTE WORKLOADS']),
+    row(['Label', 'Instance type', 'Count', 'Hours/month', 'TDP (W)', 'Raw kWh', 'kWh (with PUE)', 'CO2e (kg)']),
+    ...result.computeResults.map(r =>
+      row([r.label ?? '', r.instance, r.count, r.hoursPerMonth, r.watt, r.rawKwh, r.pueKwh, r.co2])
+    ),
+    blank,
+
+    row(['STORAGE WORKLOADS']),
+    row(['Label', 'Storage type', 'TB', 'Raw kWh', 'kWh (with PUE)', 'CO2e (kg)']),
+    ...result.storageResults.map(r =>
+      row([r.label ?? '', r.type, r.tb, r.rawKwh, r.pueKwh, r.co2])
+    ),
+    blank,
+
+    row(['REGION OPTIMISATION']),
+    row(['Best region (same provider)', result.bestSame.name, 'Saving (%)', result.bestSame.saving]),
+    row(['Best region CO2e', result.bestSame.co2, 'kgCO2e/mo', '']),
+    blank,
+
+    row(['CROSS-PROVIDER COMPARISON']),
+    row(['Provider', 'Best region', 'Grid CI', 'PUE', 'Est. CO2e (kgCO2e/mo)', 'Saving vs current (%)']),
+    ...result.crossProvider.map(r =>
+      row([r.provider, r.bestRegion, r.ci, r.pue, r.co2Est, r.saving])
+    ),
+  ];
+
+  const blob = new Blob([lines.join('\n')], {type: 'text/csv'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `ecorad_cloud_${tracker.provider}_${tracker.region}.csv`.replace(/\s+/g, '_');
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function generateEcoMarkdown(d) {
   const rows = [
     ['Project / model',          d.projectName],
@@ -1400,7 +1531,10 @@ function App() {
         <main>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,marginBottom:8}}>
             <h1 style={{margin:0}}>AI sustainability dashboard <span className="badge">{settings.region}</span></h1>
-            <button className="download" onClick={handlePrint} style={{padding:'8px 14px',fontSize:13}}><Download/>Print / PDF</button>
+            <div style={{display:'flex',gap:8}}>
+              <button className="download" onClick={()=>downloadAICSV(ai, scen, settings.region)} style={{padding:'8px 14px',fontSize:13}}><Download/>CSV</button>
+              <button className="download" onClick={handlePrint} style={{padding:'8px 14px',fontSize:13}}><Download/>Print / PDF</button>
+            </div>
           </div>
           <p className="note" style={{marginBottom:16}}>Recycling Pyramid priority: Prevent unnecessary scans → Reduce scan energy → Recover/recycle prior data. (Implementation Guide §1)</p>
 
@@ -1526,7 +1660,13 @@ function App() {
       {/* ── Cloud Carbon Tracker ── */}
       {page==='cloudtrack' && (
         <main>
-          <h1>Cloud carbon tracker <span className="badge">{cloudTracker.provider}</span></h1>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,marginBottom:8}}>
+            <h1 style={{margin:0}}>Cloud carbon tracker <span className="badge">{cloudTracker.provider}</span></h1>
+            <div style={{display:'flex',gap:8}}>
+              <button className="download" onClick={()=>downloadCloudCSV(cloudResult, cloudTracker)} style={{padding:'8px 14px',fontSize:13}}><Download/>CSV</button>
+              <button className="download" onClick={handlePrint} style={{padding:'8px 14px',fontSize:13}}><Download/>Print / PDF</button>
+            </div>
+          </div>
           <p className="note" style={{marginBottom:24}}>
             Track the carbon footprint of your cloud infrastructure workload-by-workload — compute, storage, and data transfer.
             Inspired by <a href="https://www.cloudcarbonfootprint.org/" style={{color:'#2E7D32'}} target="_blank" rel="noreferrer">Cloud Carbon Footprint</a>.
