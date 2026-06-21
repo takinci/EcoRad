@@ -1398,7 +1398,10 @@ function App() {
       {/* ── AI ── */}
       {page==='ai' && (
         <main>
-          <h1>AI sustainability dashboard <span className="badge">{settings.region}</span></h1>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,marginBottom:8}}>
+            <h1 style={{margin:0}}>AI sustainability dashboard <span className="badge">{settings.region}</span></h1>
+            <button className="download" onClick={handlePrint} style={{padding:'8px 14px',fontSize:13}}><Download/>Print / PDF</button>
+          </div>
           <p className="note" style={{marginBottom:16}}>Recycling Pyramid priority: Prevent unnecessary scans → Reduce scan energy → Recover/recycle prior data. (Implementation Guide §1)</p>
 
           {/* ── Sticky controls: selectors + summary bar + tabs ── */}
