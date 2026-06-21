@@ -89,7 +89,7 @@ EcoRad stores uncertain literature values as transparent, editable defaults with
 | ID | Citation |
 |----|---------|
 | EUF-2023 | DOI: [10.1016/j.euf.2023.09.009](https://doi.org/10.1016/j.euf.2023.09.009). European Urology Focus 2023. Systematic review of radiology environmental sustainability across modalities. |
-| MOU-2024 | DOI: [10.1097/MOU.0000000000001337](https://doi.org/10.1097/MOU.0000000000001337). Current Opinion in Urology 2024. Multi-modality carbon benchmarks; used for cross-modality comparison framing. |
+| MOU-2024 | Vosshenrich R et al. DOI: [10.1097/MOU.0000000000001337](https://doi.org/10.1097/MOU.0000000000001337). Current Opinion in Urology 2024. Multi-modality carbon benchmarks; primary source for `MODALITY_BENCHMARKS` annual kWh values displayed in the Dashboard Infrastructure section, and for global average (0.473 kgCO₂e/kWh) and EU average (0.237 kgCO₂e/kWh) carbon intensity defaults cited throughout the UI. |
 
 ---
 
@@ -130,6 +130,40 @@ Baseline kWh savings in `INTERVENTIONS` are conservative departmental estimates 
 | Extend hardware lifetime | ESR-PP-2025: embodied carbon amortised over more years; ~15 % Scope 3 reduction. |
 | Consolidate servers | Clinical-AI: virtualisation / right-sizing reduces physical server count; ~500 kWh/month. |
 | Use smaller or more efficient AI models | LLM-Energy: lighter models use substantially less inference compute; ~80 kWh/month. |
+
+---
+
+## Equivalencies and human-scale comparisons
+
+Used in the Dashboard "What it means" tab and the Home page result panel to express CO₂ in everyday terms.
+
+| ID | Source | Factor used |
+|----|--------|------------|
+| DEFRA-2023 | UK Department for Environment, Food & Rural Affairs. *Greenhouse Gas Reporting: Conversion Factors 2023.* https://www.gov.uk/government/publications/greenhouse-gas-reporting-conversion-factors-2023 | Car transport: **0.17 kgCO₂e/km** (average petrol passenger car) |
+| ICAO-2023 | International Civil Aviation Organization. *Carbon Emissions Calculator Methodology.* https://www.icao.int/environmental-protection/CarbonOffset/Pages/default.aspx | Short-haul flight: **255 kgCO₂e/seat**; long-haul: **1,200 kgCO₂e/seat** (economy, radiative forcing excluded) |
+| EEA-2023 | European Environment Agency. *Final Energy Consumption by Sector.* EEA 2023. https://www.eea.europa.eu/data-and-maps/indicators/final-energy-consumption-by-sector-11 | EU average household electricity: **3,500 kWh/yr**; EU average car: **2.1 tCO₂e/yr** |
+| EPA-CRF | US Environmental Protection Agency. *Emission Factors for Greenhouse Gas Inventories.* 2023. https://www.epa.gov/ghgemissions/emission-factors-ghg-inventories | Crude oil combustion: **430 kgCO₂e/barrel** |
+| FAO-FRA | FAO. *Global Forest Resources Assessment 2020.* https://www.fao.org/forest-resources-assessment/ | Temperate managed forest carbon sequestration: **5.5 tCO₂/ha/yr** |
+| IPCC-2006 | IPCC. *2006 IPCC Guidelines for National Greenhouse Gas Inventories,* Vol. 2, Ch. 2. https://www.ipcc-nggip.iges.or.jp/public/2006gl/ | Hard coal combustion: **2,350 kgCO₂/tonne** |
+| Tree-21 | Commonly cited figure; consistent with Nowak et al. (2013), *Urban Forest & Urban Greening* and ESR Green Imaging references. | One mature tree sequesters ~**21 kgCO₂/yr** |
+| Phone-12Wh | IEA. *Digitisation and Energy.* IEA 2017; hardware specs for modern smartphones. | Smartphone full charge: ~**12 Wh** |
+
+---
+
+## Cloud Carbon Tracker regional data
+
+| ID | Source | Used for |
+|----|--------|----------|
+| ElectricityMaps-2023 | Electricity Maps. *Annual Average Carbon Intensity by Region.* 2023. https://electricitymaps.com | Regional kgCO₂e/kWh values in `CLOUD_REGIONS` for the Cloud Carbon Tracker (AWS, Azure, GCP region selector). Values represent 2023 annual average marginal/average carbon intensity per cloud region. |
+
+---
+
+## GPU hardware specifications
+
+| ID | Source | Used for |
+|----|--------|----------|
+| NVIDIA-DC-Specs | NVIDIA. *Data Center GPU Specifications.* https://www.nvidia.com/en-us/data-center/ | TDP values (watts) for A100 SXM4 (400 W), H100 SXM5 (700 W), V100 SXM2 (300 W), A40 (300 W), L40S (350 W), RTX 4090 (450 W), RTX 3090 (350 W), RTX A6000 (300 W) used in `GPU_PRESETS` for AI energy estimation. |
+| AMD-Instinct-Specs | AMD. *Instinct GPU Specifications.* https://www.amd.com/en/products/accelerators/instinct.html | TDP value for MI300X (750 W) used in `GPU_PRESETS`. |
 
 ---
 
