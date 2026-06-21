@@ -1459,6 +1459,24 @@ function App() {
                 <p>{ai.netKgCo2e < 0 ? "Net positive — clinical savings outweigh full AI footprint." : "Net negative — AI costs currently exceed measured savings."}</p>
               </section>
             </div>
+            <h3 style={{marginTop:24,marginBottom:12,color:'#2E7D32',fontSize:15}}>What this AI footprint means in everyday terms</h3>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:14}}>
+              {[
+                {icon:<Car/>,      n:Math.round(ai.grossKgCo2e/0.17).toLocaleString(),          label:'km driven by car',       note:'Gross monthly CO₂ at 0.17 kgCO₂/km (DEFRA 2023)'},
+                {icon:<Plane/>,    n:String(rnd(ai.grossKgCo2e/255,1)),                          label:'short-haul flights',     note:'~255 kgCO₂e per economy seat (ICAO 2023)'},
+                {icon:<TreePine/>, n:Math.round(ai.grossKgCo2e/21).toLocaleString(),             label:'tree-years to offset',   note:'One mature tree sequesters ~21 kgCO₂/yr'},
+                {icon:<Activity/>, n:Math.round(ai.inference.kwhMonthly/0.012).toLocaleString(), label:'smartphone charges',     note:'Monthly inference energy equivalent at 12 Wh/charge'},
+              ].map((e,i)=>(
+                <div key={i} style={{background:'#f1f8f1',borderRadius:16,padding:'14px 16px',display:'flex',alignItems:'center',gap:12}}>
+                  <span style={{color:'#2E7D32',flexShrink:0}}>{e.icon}</span>
+                  <div>
+                    <div style={{fontWeight:900,fontSize:22,color:'#1b5e20',lineHeight:1}}>{e.n}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:'#263238',marginTop:2}}>{e.label}</div>
+                    <div style={{fontSize:11,color:'#607d66',marginTop:1}}>{e.note}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
 
           {/* ── Clinical ── */}
