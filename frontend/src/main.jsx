@@ -1366,6 +1366,18 @@ function App() {
                 </div>
               ))}
             </section>
+            <section style={{marginTop:20}}>
+              <h2>Modality energy benchmarks</h2>
+              <p className="note" style={{marginBottom:12}}>Annual reference values from Vosshenrich et al. Idle accounts for 50–66% of total energy (Schoen et al.: idle offers 14.9× more savings potential than active state).</p>
+              <div className="row" style={{fontWeight:700,color:'#2E7D32'}}><span>Modality</span><span>kWh / year</span><span style={{fontSize:12}}>Note</span></div>
+              {MODALITY_BENCHMARKS.map((m,i)=>(
+                <div key={i} className="row">
+                  <b>{m.modality}</b>
+                  <span>{m.kwhYear.toLocaleString()} kWh · {m.co2Year.toLocaleString()} kg CO₂e</span>
+                  <small>{m.note}</small>
+                </div>
+              ))}
+            </section>
           </section>
 
           {/* ── 4. Resource metrics ── */}
@@ -1403,7 +1415,7 @@ function App() {
               <span>Cloud CI <b>{ai.cloudCi} kgCO₂e/kWh</b></span>
             </div>
             <div className="aiTabs">
-              {[['model','Model'],['training','Training'],['testing','Testing'],['inference','Inference'],['carbon','Carbon'],['clinical','Clinical'],['benchmarks','Benchmarks']].map(([id,label])=>(
+              {[['model','Model'],['training','Training'],['testing','Testing'],['inference','Inference'],['carbon','Carbon'],['clinical','Clinical']].map(([id,label])=>(
                 <button key={id} className={aiTab===id?'on':''} onClick={()=>{
                   setAiTab(id);
                   document.getElementById('ai-'+id)?.scrollIntoView({behavior:'smooth',block:'start'});
@@ -1505,19 +1517,6 @@ function App() {
             </div>
           </section>
 
-          {/* ── Benchmarks ── */}
-          <section id="ai-benchmarks" className="aiSection" style={{marginTop:28}}>
-            <h2>Modality energy benchmarks</h2>
-            <p className="note" style={{marginBottom:12}}>Annual reference values from Vosshenrich et al. Idle state accounts for 50–66% of total energy (Schoen et al.: idle offers 14.9× more savings potential than active state).</p>
-            <div className="row" style={{fontWeight:700,color:'#2E7D32'}}><span>Modality</span><span>kWh / year</span><span style={{fontSize:12}}>Note</span></div>
-            {MODALITY_BENCHMARKS.map((m,i)=>(
-              <div key={i} className="row">
-                <b>{m.modality}</b>
-                <span>{m.kwhYear.toLocaleString()} kWh · {m.co2Year.toLocaleString()} kg CO₂e</span>
-                <small>{m.note}</small>
-              </div>
-            ))}
-          </section>
         </main>
       )}
 
