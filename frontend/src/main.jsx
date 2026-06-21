@@ -848,6 +848,87 @@ function downloadCloudCSV(result, tracker) {
   URL.revokeObjectURL(url);
 }
 
+const DEPT_TIERS = [
+  {tier:'A', label:'Exemplary',     max:0.5,      color:'#1b5e20', bg:'#e8f5e9'},
+  {tier:'B', label:'Good',          max:1.5,      color:'#2E7D32', bg:'#dcedc8'},
+  {tier:'C', label:'Average',       max:3.5,      color:'#F57F17', bg:'#fff8e1'},
+  {tier:'D', label:'Below average', max:7.0,      color:'#E65100', bg:'#fff3e0'},
+  {tier:'E', label:'High impact',   max:Infinity, color:'#c62828', bg:'#ffebee'},
+];
+
+function generateDeptText(d) {
+  if (!d.annualStudies) return '';
+  return (
+    `Environmental footprint. ${d.deptName}${d.hospitalName ? ` (${d.hospitalName})` : ''} consumed an estimated ${d.annualKwh.toLocaleString()} kWh of electricity in the reporting period, generating approximately ${d.totalAnnualCo2.toLocaleString()} kgCO₂e (effective carbon intensity: ${d.effectiveCi} kgCO₂e/kWh; renewable energy: ${d.renewablePct}%; grid region: ${d.region}). ` +
+    `Across ${d.annualStudies.toLocaleString()} imaging studies, the carbon intensity per study was ${d.co2PerStudy} kgCO₂e/study (${d.kwhPerStudy} kWh/study), corresponding to EcoRad Department Sustainability Tier ${d.tier} (${d.tierLabel}).` +
+    (d.interventionCount > 0 ? ` The department has implemented ${d.interventionCount} sustainability intervention${d.interventionCount > 1 ? 's' : ''}, with an estimated energy saving potential of ${d.annualKwhSaving.toLocaleString()} kWh/yr (${d.co2Saving} kgCO₂e/yr).` : '') +
+    ` Sustainability metrics were estimated using EcoRad (${d.date}), informed by the framework of Vosshenrich R et al. (Curr Opin Urol 2024, DOI: 10.1097/MOU.0000000000001337) and McKee BJ et al. (Radiology 2024, DOI: 10.1148/radiol.240219).`
+  );
+}
+
+function downloadDeptPNG(d) {
+  const W = 510;
+  const rows = [
+    ['Annual electricity',   `${d.annualKwh.toLocaleString()} kWh`],
+    ['Annual CO₂e',    `${d.totalAnnualCo2.toLocaleString()} kgCO₂e`],
+    ['Studies / year',       d.annualStudies.toLocaleString()],
+    ['Energy per study',     `${d.kwhPerStudy} kWh`],
+    ['Carbon intensity',     `${d.effectiveCi} kgCO₂e/kWh (${d.renewablePct}% renewable)`],
+    ['Grid region',          d.region],
+    ...(d.interventionCount > 0 ? [['Active interventions', `${d.interventionCount} implemented \xb7 ~${d.annualKwhSaving.toLocaleString()} kWh/yr saved`]] : []),
+  ];
+  const ROW_H = 26, HEADER_H = 72, TIER_H = 84, FOOTER_H = 28;
+  const H = HEADER_H + TIER_H + 4 + rows.length * ROW_H + 6 + FOOTER_H + 4;
+  const canvas = document.createElement('canvas');
+  canvas.width = W * 2; canvas.height = H * 2;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(2, 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.roundRect(0, 0, W, H, 14); ctx.fill();
+  ctx.strokeStyle = d.tierColor; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(1, 1, W-2, H-2, 13); ctx.stroke();
+  ctx.fillStyle = '#1b5e20';
+  ctx.beginPath(); ctx.roundRect(1, 1, W-2, HEADER_H, [13,13,0,0]); ctx.fill();
+  ctx.fillStyle = '#ffffff'; ctx.font = 'bold 15px sans-serif';
+  ctx.fillText('EcoRad Department EcoLabel', 16, 26);
+  ctx.font = '13px sans-serif'; ctx.fillStyle = '#A5D6A7';
+  ctx.fillText(d.deptName, 16, 48);
+  ctx.font = '10px sans-serif'; ctx.fillStyle = '#81C784';
+  ctx.fillText(`${d.hospitalName ? d.hospitalName + ' \xb7 ' : ''}${d.region} \xb7 ${d.date}`, 16, 66);
+  ctx.fillStyle = d.tierBg;
+  ctx.fillRect(2, HEADER_H, W-4, TIER_H);
+  ctx.font = 'bold 60px sans-serif'; ctx.fillStyle = d.tierColor;
+  ctx.fillText(d.tier, 20, HEADER_H + 65);
+  ctx.font = 'bold 17px sans-serif'; ctx.fillStyle = d.tierColor;
+  ctx.fillText(`Tier ${d.tier} — ${d.tierLabel}`, 90, HEADER_H + 32);
+  ctx.font = '12px sans-serif'; ctx.fillStyle = '#263238';
+  ctx.fillText(`${d.co2PerStudy} kgCO₂e per imaging study`, 90, HEADER_H + 54);
+  ctx.font = '10px sans-serif'; ctx.fillStyle = '#607d66';
+  ctx.fillText('EcoRad benchmark \xb7 Vosshenrich et al. 2024', 90, HEADER_H + 72);
+  rows.forEach(([k, v], i) => {
+    const y = HEADER_H + TIER_H + 4 + i * ROW_H;
+    ctx.fillStyle = i%2===0 ? '#f1f8f1' : '#ffffff';
+    ctx.fillRect(2, y, W-4, ROW_H);
+    ctx.fillStyle = '#607d66'; ctx.font = '11px sans-serif';
+    ctx.fillText(k, 14, y+17);
+    ctx.fillStyle = '#263238'; ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(String(v), 200, y+17);
+  });
+  const footerY = HEADER_H + TIER_H + 4 + rows.length * ROW_H + 6;
+  ctx.fillStyle = '#e8f5e9';
+  ctx.beginPath(); ctx.roundRect(2, footerY, W-4, FOOTER_H, [0,0,11,11]); ctx.fill();
+  ctx.fillStyle = '#2E7D32'; ctx.font = '10px sans-serif';
+  ctx.fillText(`EcoRad \xb7 ${d.date} \xb7 Vosshenrich et al. Curr Opin Urol 2024 \xb7 CC BY 4.0`, 14, footerY+18);
+  canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ecorad_dept_label_${(d.deptName||'department').replace(/\W+/g,'_')}.png`;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  });
+}
+
 function generateEcoMarkdown(d) {
   const rows = [
     ['Project / model',          d.projectName],
@@ -1028,6 +1109,20 @@ function App() {
     inferKwhPerStudy: '',
   });
   const setEco = (key, val) => setEcoLabel(l => ({...l, [key]: val}));
+  const [ecoLabelTab, setEcoLabelTab] = useState('ai');
+  const [deptCopied, setDeptCopied] = useState(false);
+  const [deptLabel, setDeptLabel] = useState({
+    deptName: '', hospitalName: '', region: 'EU average',
+    annualKwh: '', annualStudies: '', renewablePct: '0',
+    activeInterventions: [],
+  });
+  const setDept = (key, val) => setDeptLabel(d => ({...d, [key]: val}));
+  const toggleIntervention = name => setDeptLabel(d => ({
+    ...d,
+    activeInterventions: d.activeInterventions.includes(name)
+      ? d.activeInterventions.filter(x => x !== name)
+      : [...d.activeInterventions, name],
+  }));
 
   const [cloudTracker, setCloudTracker] = useState({
     provider: 'AWS',
@@ -1153,6 +1248,42 @@ function App() {
       date: new Date().toISOString().slice(0, 7),
     };
   }, [ecoLabel, settings.customCi]);
+
+  const deptLabelData = useMemo(() => {
+    const ci = getCI(deptLabel.region, settings.customCi);
+    const renewablePct = Math.min(100, Math.max(0, parseFloat(deptLabel.renewablePct) || 0));
+    const effectiveCi = rnd(ci * (1 - renewablePct / 100), 4);
+    const annualKwh = parseFloat(deptLabel.annualKwh) || 0;
+    const annualStudies = parseFloat(deptLabel.annualStudies) || 0;
+    const totalAnnualCo2 = rnd(annualKwh * effectiveCi, 1);
+    const co2PerStudy = annualStudies > 0 ? rnd(totalAnnualCo2 / annualStudies, 3) : 0;
+    const kwhPerStudy = annualStudies > 0 ? rnd(annualKwh / annualStudies, 2) : 0;
+    const tierObj = annualStudies > 0
+      ? (DEPT_TIERS.find(t => co2PerStudy <= t.max) ?? DEPT_TIERS[4])
+      : {tier:'—', label:'Enter data above', color:'#90a4ae', bg:'#f5f5f5'};
+    const monthlyKwhSaving = deptLabel.activeInterventions.reduce(
+      (s, name) => s + (INTERVENTIONS[name]?.kwh || 0), 0
+    );
+    const annualKwhSaving = monthlyKwhSaving * 12;
+    const co2Saving = rnd(annualKwhSaving * effectiveCi, 1);
+    const potentialCo2PerStudy = annualStudies > 0
+      ? rnd(Math.max(0, annualKwh - annualKwhSaving) * effectiveCi / annualStudies, 3) : 0;
+    const potentialTierObj = annualStudies > 0
+      ? (DEPT_TIERS.find(t => potentialCo2PerStudy <= t.max) ?? DEPT_TIERS[4])
+      : tierObj;
+    return {
+      deptName: deptLabel.deptName || 'Unnamed Department',
+      hospitalName: deptLabel.hospitalName || '',
+      region: deptLabel.region,
+      ci, effectiveCi, renewablePct,
+      annualKwh, annualStudies, totalAnnualCo2, co2PerStudy, kwhPerStudy,
+      tier: tierObj.tier, tierLabel: tierObj.label, tierColor: tierObj.color, tierBg: tierObj.bg,
+      monthlyKwhSaving, annualKwhSaving, co2Saving,
+      potentialCo2PerStudy, potentialTier: potentialTierObj.tier, potentialTierColor: potentialTierObj.color,
+      interventionCount: deptLabel.activeInterventions.length,
+      date: new Date().toISOString().slice(0, 7),
+    };
+  }, [deptLabel, settings.customCi]);
 
   const cloudResult = useMemo(() => computeCloudCarbon(cloudTracker), [cloudTracker]);
 
@@ -1922,7 +2053,15 @@ function App() {
       {/* ── Eco-label ── */}
       {page==='ecolabel' && (
         <main>
-          <h1>Eco-label generator</h1>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,marginBottom:16}}>
+            <h1 style={{margin:0}}>EcoLabel generator</h1>
+            <div className="aiTabs">
+              <button className={ecoLabelTab==='ai'?'on':''} onClick={()=>setEcoLabelTab('ai')}>AI Model</button>
+              <button className={ecoLabelTab==='dept'?'on':''} onClick={()=>setEcoLabelTab('dept')}>Department</button>
+            </div>
+          </div>
+
+          {ecoLabelTab==='ai' && (<>
           <p className="note" style={{marginBottom:8}}>
             Enter your model's actual training metrics to generate a standardised sustainability label for paper or conference submission.
             Fields align with the AI environmental reporting framework recommended in Doo FX et al. <em>Radiology</em> 2024 (DOI 10.1148/radiol.232030).
@@ -2115,6 +2254,128 @@ function App() {
                ` Sustainability metrics were estimated using EcoRad (${ecoLabelData.date}), following the framework of Doo FX et al. (Radiology 2024, DOI: 10.1148/radiol.232030).`}
             </pre>
           </section>
+          </>)}
+
+          {ecoLabelTab==='dept' && (<>
+            <p className="note" style={{marginBottom:24}}>
+              Generate a department-level sustainability label for ESG reports, accreditation submissions, or public sustainability disclosures.
+              Tier rating (A–E) is based on kgCO₂e per imaging study, benchmarked against published radiology carbon intensity data (Vosshenrich R et al., Curr Opin Urol 2024).
+            </p>
+
+            <div className="inputSummary" style={{marginBottom:24}}>
+              <h2 style={{marginTop:0,marginBottom:16,color:'#1b5e20'}}>Department identity</h2>
+              <div className="grid grid3">
+                <label>Department name<input type="text" value={deptLabel.deptName} onChange={e=>setDept('deptName',e.target.value)} placeholder="e.g. Radiology — MRI Unit"/></label>
+                <label>Hospital / institution<input type="text" value={deptLabel.hospitalName} onChange={e=>setDept('hospitalName',e.target.value)} placeholder="e.g. University Hospital Basel"/></label>
+                <Sel label="Grid region" value={deptLabel.region} options={META.regions} onChange={v=>setDept('region',v)}/>
+              </div>
+            </div>
+
+            <div className="inputSummary" style={{marginBottom:24}}>
+              <h2 style={{marginTop:0,marginBottom:16,color:'#1b5e20'}}>Energy &amp; imaging volume</h2>
+              <div className="grid grid3">
+                <label>Annual electricity (kWh)<input type="number" min="0" value={deptLabel.annualKwh} onChange={e=>setDept('annualKwh',e.target.value)} placeholder="e.g. 480000"/></label>
+                <label>Total imaging studies / year<input type="number" min="0" value={deptLabel.annualStudies} onChange={e=>setDept('annualStudies',e.target.value)} placeholder="e.g. 45000"/></label>
+                <label>Renewable energy (%)<input type="number" min="0" max="100" value={deptLabel.renewablePct} onChange={e=>setDept('renewablePct',e.target.value)} placeholder="0–100"/></label>
+              </div>
+              <p className="note" style={{marginTop:8}}>Use your facility's utility bills or energy management system for the most accurate kWh figure. If unavailable, use the Radiology Dashboard estimated total. Renewable energy % reduces the effective carbon intensity.</p>
+            </div>
+
+            <div className="inputSummary" style={{marginBottom:32}}>
+              <h2 style={{marginTop:0,marginBottom:8,color:'#1b5e20'}}>Sustainability actions <span style={{fontWeight:400,fontSize:14,color:'#607d66'}}>(tick implemented interventions)</span></h2>
+              <p className="note" style={{marginBottom:16}}>
+                Checking implemented interventions shows your saving potential and strengthens your label documentation.
+                {deptLabel.activeInterventions.length > 0 && (
+                  <> <strong style={{color:'#2E7D32'}}>{deptLabel.activeInterventions.length} selected · saving potential: {deptLabelData.annualKwhSaving.toLocaleString()} kWh/yr ({deptLabelData.co2Saving} kgCO₂e/yr)</strong></>
+                )}
+              </p>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:10}}>
+                {Object.entries(INTERVENTIONS).map(([name, data]) => {
+                  const active = deptLabel.activeInterventions.includes(name);
+                  return (
+                    <label key={name} style={{flexDirection:'row',alignItems:'flex-start',gap:10,fontWeight:400,color:'#263238',cursor:'pointer',background:active?'#e8f5e9':'#fafafa',borderRadius:10,padding:'10px 12px',border:active?'1.5px solid #81C784':'1px solid #e0e0e0'}}>
+                      <input type="checkbox" checked={active} onChange={()=>toggleIntervention(name)} style={{width:16,height:16,accentColor:'#2E7D32',marginTop:2,flexShrink:0}}/>
+                      <div>
+                        <div style={{fontWeight:600,fontSize:14,marginBottom:2}}>{name}</div>
+                        <div style={{fontSize:12,color:'#607d66'}}>{data.note}{data.kwh>0?` · ~${(data.kwh*12).toLocaleString()} kWh/yr saving`:''}</div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <h2>Label preview</h2>
+            <div style={{display:'flex',gap:28,flexWrap:'wrap',alignItems:'flex-start',marginBottom:32}}>
+              <div style={{background:'white',border:`2px solid ${deptLabelData.tierColor}`,borderRadius:14,overflow:'hidden',minWidth:320,maxWidth:510,fontFamily:'Inter,sans-serif',boxShadow:'0 8px 30px #1b5e2020',flexShrink:0}}>
+                <div style={{background:'#1b5e20',padding:'14px 18px'}}>
+                  <div style={{color:'white',fontWeight:700,fontSize:16,display:'flex',alignItems:'center',gap:8}}><Leaf style={{width:16,height:16}}/> EcoRad Department EcoLabel</div>
+                  <div style={{color:'#A5D6A7',fontSize:13,marginTop:4}}>{deptLabelData.deptName}</div>
+                  <div style={{color:'#81C784',fontSize:11,marginTop:2}}>{deptLabelData.hospitalName ? `${deptLabelData.hospitalName} · ` : ''}{deptLabelData.region} · {deptLabelData.date}</div>
+                </div>
+                <div style={{background:deptLabelData.tierBg,padding:'20px 24px',display:'flex',alignItems:'center',gap:24}}>
+                  <div style={{fontSize:72,fontWeight:900,color:deptLabelData.tierColor,lineHeight:1,flexShrink:0}}>{deptLabelData.tier}</div>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:18,color:deptLabelData.tierColor}}>Tier {deptLabelData.tier} — {deptLabelData.tierLabel}</div>
+                    <div style={{fontSize:14,color:'#263238',marginTop:4}}>{deptLabelData.co2PerStudy>0 ? `${deptLabelData.co2PerStudy} kgCO₂e per imaging study` : 'Enter data above to calculate'}</div>
+                    {deptLabelData.interventionCount>0 && deptLabelData.potentialTier!==deptLabelData.tier && (
+                      <div style={{fontSize:12,color:'#2E7D32',marginTop:4}}>With active interventions → potential Tier {deptLabelData.potentialTier}</div>
+                    )}
+                  </div>
+                </div>
+                {[
+                  ['Annual electricity',   deptLabelData.annualKwh>0 ? `${deptLabelData.annualKwh.toLocaleString()} kWh` : '—'],
+                  ['Annual CO₂e',         deptLabelData.totalAnnualCo2>0 ? `${deptLabelData.totalAnnualCo2.toLocaleString()} kgCO₂e` : '—'],
+                  ['Studies / year',       deptLabelData.annualStudies>0 ? deptLabelData.annualStudies.toLocaleString() : '—'],
+                  ['Energy per study',     deptLabelData.kwhPerStudy>0 ? `${deptLabelData.kwhPerStudy} kWh` : '—'],
+                  ['Effective grid CI',    `${deptLabelData.effectiveCi} kgCO₂e/kWh (${deptLabelData.renewablePct}% renewable)`],
+                  ['Grid region',          deptLabelData.region],
+                  ...(deptLabelData.interventionCount>0 ? [['Active interventions', `${deptLabelData.interventionCount} implemented · ${deptLabelData.annualKwhSaving.toLocaleString()} kWh/yr saving`]] : []),
+                ].map(([k,v],i)=>(
+                  <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'7px 18px',background:i%2===0?'#f1f8f1':'white',fontSize:13,gap:12}}>
+                    <span style={{color:'#607d66',flexShrink:0}}>{k}</span>
+                    <span style={{fontWeight:700,color:'#263238',textAlign:'right'}}>{v}</span>
+                  </div>
+                ))}
+                <div style={{background:'#e8f5e9',padding:'8px 18px',fontSize:11,color:'#2E7D32'}}>
+                  Estimated with EcoRad · {deptLabelData.date} · Vosshenrich et al. Curr Opin Urol 2024 · CC BY 4.0
+                </div>
+              </div>
+
+              <div style={{display:'flex',flexDirection:'column',gap:12,paddingTop:8}}>
+                <button className="download" onClick={()=>downloadDeptPNG(deptLabelData)} disabled={deptLabelData.annualStudies===0}>
+                  <Download/> Download PNG badge
+                </button>
+                <button className="download" onClick={()=>{navigator.clipboard.writeText(generateDeptText(deptLabelData));setDeptCopied(true);setTimeout(()=>setDeptCopied(false),2000);}} disabled={deptLabelData.annualStudies===0} style={deptCopied?{background:'#26A69A'}:undefined}>
+                  <FileText/> {deptCopied ? 'Copied!' : 'Copy ESG paragraph'}
+                </button>
+                <p className="note" style={{maxWidth:220,fontSize:12,margin:0}}>
+                  PNG badge: embed in sustainability reports, posters, or accreditation submissions.<br/><br/>
+                  ESG paragraph: paste into your hospital's annual sustainability report or ESR Green Imaging self-assessment.
+                </p>
+                <div style={{marginTop:8}}>
+                  <p className="note" style={{fontSize:12,marginBottom:8,fontWeight:700}}>Tier reference (kgCO₂e / imaging study):</p>
+                  {DEPT_TIERS.map(t=>(
+                    <div key={t.tier} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:4,fontWeight:deptLabelData.tier===t.tier?700:400,color:deptLabelData.tier===t.tier?'#263238':'#607d66'}}>
+                      <span style={{background:t.color,color:'white',borderRadius:4,padding:'1px 7px',fontWeight:900,fontSize:14,minWidth:18,textAlign:'center'}}>{t.tier}</span>
+                      <span>{t.label}</span>
+                      <span style={{marginLeft:'auto',fontFamily:'monospace',fontSize:11}}>{t.tier==='A'?'≤ 0.5':t.max===Infinity?'> 7.0':`≤ ${t.max}`}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {deptLabelData.annualStudies>0 && (
+              <section style={{marginTop:0}}>
+                <h2>Ready-to-paste ESG paragraph</h2>
+                <p className="note" style={{marginBottom:8}}>Copy into your hospital's annual sustainability report, ESR Green Imaging self-assessment, or accreditation documentation.</p>
+                <pre style={{background:'#f1f8f1',borderRadius:14,padding:'16px 20px',fontSize:12,lineHeight:1.8,border:'1px solid #c8e6c9',fontFamily:'monospace',whiteSpace:'pre-wrap'}}>
+                  {generateDeptText(deptLabelData)}
+                </pre>
+              </section>
+            )}
+          </>)}
         </main>
       )}
 
