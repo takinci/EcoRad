@@ -1259,9 +1259,9 @@ function App() {
 
   const equivData = useMemo(() => {
     const co2 = equivScope === 'scope2'
-      ? dash.scopes.scope2Kg
-      : dash.scopes.scope1Kg + dash.scopes.scope2Kg + dash.scopes.scope3Kg;
-    const kwh = dash.totals.kwh;
+      ? dash.scopes.scope2Kg + landingAICo2
+      : dash.scopes.scope1Kg + dash.scopes.scope2Kg + dash.scopes.scope3Kg + landingAICo2;
+    const kwh = dash.totals.kwh + landingAIKwh;
     return {
       co2, kwh,
       // Transport — CO₂-based
@@ -1283,7 +1283,7 @@ function App() {
       barrels_oil:   rnd(co2 / 430, 1),             // crude oil combustion EPA (0.43 tCO₂/barrel)
       tonnes_coal:   rnd(co2 / 2350, 2),            // bituminous coal ~2 350 kgCO₂/tonne (IPCC)
     };
-  }, [dash, equivScope]);
+  }, [dash, equivScope, landingAICo2, landingAIKwh]);
 
   const ecoLabelData = useMemo(() => {
     const gpuTdpKw = ecoLabel.gpuModel === 'Custom (enter TDP below)'
@@ -1811,7 +1811,7 @@ function App() {
             <p className="note" style={{marginBottom:12}}>Scope 1: direct fuel (estimated). Scope 2: purchased electricity (calculated). Scope 3: hardware embodied carbon + patient travel (estimated). All {dash.totals.label}.</p>
             <div className="cards">
               <Card icon={<Factory/>}    title="Scope 1 — Direct"          value={fmtCo2(dash.scopes.scope1Kg)}       sub="Backup generators, medical gas. Estimated 8% of Scope 2 (McKee 2024)."/>
-              <Card icon={<Gauge/>}      title="Scope 2 — Electricity"     value={fmtCo2(dash.scopes.scope2Kg)}       sub={`Grid at ${dash.ci} kgCO₂e/kWh (${settings.region}). Primary measured scope.`}/>
+              <Card icon={<Gauge/>}      title="Scope 2 — Electricity"     value={fmtCo2(dash.scopes.scope2Kg + landingAICo2)}  sub={`Grid at ${dash.ci} kgCO₂e/kWh (${settings.region}).${landingAICo2>0?` Includes ${fmtCo2(landingAICo2)} from AI tools.`:' Primary measured scope.'}`}/>
               <Card icon={<Cpu/>}        title="Scope 3 — Embodied carbon" value={fmtCo2(dash.scopes.scope3EmbKg)}    sub="Hardware manufacturing amortised over lifespan. Extend lifetime to reduce."/>
               <Card icon={<Car/>}        title="Scope 3 — Patient travel"  value={fmtCo2(dash.scopes.scope3TravelKg)} sub={`${dash.scopes.imagingScans.toLocaleString()} scans × ${PATIENT_KM_RT} km avg round trip.`}/>
             </div>
