@@ -931,27 +931,35 @@ function downloadCloudCSV(result, tracker) {
   URL.revokeObjectURL(url);
 }
 
+// EU Energy Label A–G colour palette (Regulation EU 2021/341 rescaled scheme).
+// `color` = dark readable version used for text on light backgrounds.
+// `badgeColor` = vivid EU colour used for the letter badge / border.
+// `letterColor` = text colour inside the badge (white, or dark for light badges C/D).
 const AI_TIERS = [
-  {tier:'A', label:'Low footprint',  max:10,       color:'#1b5e20', bg:'#e8f5e9'},
-  {tier:'B', label:'Moderate',       max:100,      color:'#2E7D32', bg:'#dcedc8'},
-  {tier:'C', label:'Significant',    max:1000,     color:'#F57F17', bg:'#fff8e1'},
-  {tier:'D', label:'High',           max:5000,     color:'#E65100', bg:'#fff3e0'},
-  {tier:'E', label:'Very high',      max:Infinity, color:'#c62828', bg:'#ffebee'},
+  {tier:'A', label:'Very low carbon',  max:5,        color:'#005a2b', bg:'#e6f4ed', badgeColor:'#00A14B', letterColor:'white'},
+  {tier:'B', label:'Low carbon',       max:50,       color:'#2b6e2c', bg:'#dcedc8', badgeColor:'#52B153', letterColor:'white'},
+  {tier:'C', label:'Moderate',         max:300,      color:'#6b7200', bg:'#f5f9e0', badgeColor:'#C8D400', letterColor:'#263238'},
+  {tier:'D', label:'Above average',    max:1000,     color:'#7a5800', bg:'#fefde6', badgeColor:'#F9CB00', letterColor:'#263238'},
+  {tier:'E', label:'High',             max:5000,     color:'#8a4a00', bg:'#fff3e0', badgeColor:'#F49200', letterColor:'white'},
+  {tier:'F', label:'Very high',        max:20000,    color:'#9b3510', bg:'#fde8e0', badgeColor:'#E85118', letterColor:'white'},
+  {tier:'G', label:'Extreme',          max:Infinity, color:'#9b1515', bg:'#ffebee', badgeColor:'#E52425', letterColor:'white'},
 ];
 
 const DEPT_TIERS = [
-  {tier:'A', label:'Exemplary',     max:0.5,      color:'#1b5e20', bg:'#e8f5e9'},
-  {tier:'B', label:'Good',          max:1.5,      color:'#2E7D32', bg:'#dcedc8'},
-  {tier:'C', label:'Average',       max:3.5,      color:'#F57F17', bg:'#fff8e1'},
-  {tier:'D', label:'Below average', max:7.0,      color:'#E65100', bg:'#fff3e0'},
-  {tier:'E', label:'High impact',   max:Infinity, color:'#c62828', bg:'#ffebee'},
+  {tier:'A', label:'Excellent',      max:0.3,      color:'#005a2b', bg:'#e6f4ed', badgeColor:'#00A14B', letterColor:'white'},
+  {tier:'B', label:'Very good',      max:0.8,      color:'#2b6e2c', bg:'#dcedc8', badgeColor:'#52B153', letterColor:'white'},
+  {tier:'C', label:'Good',           max:1.8,      color:'#6b7200', bg:'#f5f9e0', badgeColor:'#C8D400', letterColor:'#263238'},
+  {tier:'D', label:'Average',        max:3.5,      color:'#7a5800', bg:'#fefde6', badgeColor:'#F9CB00', letterColor:'#263238'},
+  {tier:'E', label:'Below average',  max:6.0,      color:'#8a4a00', bg:'#fff3e0', badgeColor:'#F49200', letterColor:'white'},
+  {tier:'F', label:'Poor',           max:10.0,     color:'#9b3510', bg:'#fde8e0', badgeColor:'#E85118', letterColor:'white'},
+  {tier:'G', label:'Very poor',      max:Infinity, color:'#9b1515', bg:'#ffebee', badgeColor:'#E52425', letterColor:'white'},
 ];
 
 function generateDeptText(d) {
   if (!d.annualStudies) return '';
   return (
     `Environmental footprint. ${d.deptName}${d.hospitalName ? ` (${d.hospitalName})` : ''} consumed an estimated ${d.annualKwh.toLocaleString()} kWh of electricity in the reporting period, generating approximately ${d.totalAnnualCo2.toLocaleString()} kgCO₂e (effective carbon intensity: ${d.effectiveCi} kgCO₂e/kWh; renewable energy: ${d.renewablePct}%; grid region: ${d.region}). ` +
-    `Across ${d.annualStudies.toLocaleString()} imaging studies, the carbon intensity per study was ${d.co2PerStudy} kgCO₂e/study (${d.kwhPerStudy} kWh/study), corresponding to EcoRad Department Sustainability Tier ${d.tier} (${d.tierLabel}).` +
+    `Across ${d.annualStudies.toLocaleString()} imaging studies, the carbon intensity per study was ${d.co2PerStudy} kgCO₂e/study (${d.kwhPerStudy} kWh/study), corresponding to EU Energy Rating ${d.tier} (${d.tierLabel}) on the A–G scale modelled after EU Regulation 2021/341.` +
     (d.interventionCount > 0 ? ` The department has implemented ${d.interventionCount} sustainability intervention${d.interventionCount > 1 ? 's' : ''}, with an estimated energy saving potential of ${d.annualKwhSaving.toLocaleString()} kWh/yr (${d.co2Saving} kgCO₂e/yr).` : '') +
     ` Sustainability metrics were estimated using EcoRad (${d.date}), informed by the framework of Vosshenrich R et al. (Curr Opin Urol 2024, DOI: 10.1097/MOU.0000000000001337) and McKee BJ et al. (Radiology 2024, DOI: 10.1148/radiol.240219).`
   );
@@ -976,7 +984,7 @@ function downloadDeptPNG(d) {
   ctx.scale(2, 2);
   ctx.fillStyle = '#ffffff';
   ctx.beginPath(); ctx.roundRect(0, 0, W, H, 14); ctx.fill();
-  ctx.strokeStyle = d.tierColor; ctx.lineWidth = 2;
+  ctx.strokeStyle = d.tierBadgeColor; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.roundRect(1, 1, W-2, H-2, 13); ctx.stroke();
   ctx.fillStyle = '#1b5e20';
   ctx.beginPath(); ctx.roundRect(1, 1, W-2, HEADER_H, [13,13,0,0]); ctx.fill();
@@ -988,14 +996,17 @@ function downloadDeptPNG(d) {
   ctx.fillText(`${d.hospitalName ? d.hospitalName + ' \xb7 ' : ''}${d.region} \xb7 ${d.date}`, 16, 66);
   ctx.fillStyle = d.tierBg;
   ctx.fillRect(2, HEADER_H, W-4, TIER_H);
-  ctx.font = 'bold 60px sans-serif'; ctx.fillStyle = d.tierColor;
-  ctx.fillText(d.tier, 20, HEADER_H + 65);
-  ctx.font = 'bold 17px sans-serif'; ctx.fillStyle = d.tierColor;
-  ctx.fillText(`Tier ${d.tier} — ${d.tierLabel}`, 90, HEADER_H + 32);
+  // EU Energy Label badge — solid-colour square with letter
+  ctx.fillStyle = d.tierBadgeColor;
+  ctx.beginPath(); ctx.roundRect(14, HEADER_H + 12, 60, 60, 8); ctx.fill();
+  ctx.font = 'bold 48px sans-serif'; ctx.fillStyle = d.tierLetterColor; ctx.textAlign = 'center';
+  ctx.fillText(d.tier, 44, HEADER_H + 58); ctx.textAlign = 'left';
+  ctx.font = 'bold 16px sans-serif'; ctx.fillStyle = d.tierColor;
+  ctx.fillText(`EU Rating ${d.tier} — ${d.tierLabel}`, 88, HEADER_H + 36);
   ctx.font = '12px sans-serif'; ctx.fillStyle = '#263238';
-  ctx.fillText(`${d.co2PerStudy} kgCO₂e per imaging study`, 90, HEADER_H + 54);
+  ctx.fillText(`${d.co2PerStudy} kgCO₂e per imaging study`, 88, HEADER_H + 56);
   ctx.font = '10px sans-serif'; ctx.fillStyle = '#607d66';
-  ctx.fillText('EcoRad benchmark \xb7 Vosshenrich et al. 2024', 90, HEADER_H + 72);
+  ctx.fillText('EU Energy Label A–G \xb7 Vosshenrich et al. 2024', 88, HEADER_H + 74);
   rows.forEach(([k, v], i) => {
     const y = HEADER_H + TIER_H + 4 + i * ROW_H;
     ctx.fillStyle = i%2===0 ? '#f1f8f1' : '#ffffff';
@@ -1009,7 +1020,7 @@ function downloadDeptPNG(d) {
   ctx.fillStyle = '#e8f5e9';
   ctx.beginPath(); ctx.roundRect(2, footerY, W-4, FOOTER_H, [0,0,11,11]); ctx.fill();
   ctx.fillStyle = '#2E7D32'; ctx.font = '10px sans-serif';
-  ctx.fillText(`EcoRad \xb7 ${d.date} \xb7 Vosshenrich et al. Curr Opin Urol 2024 \xb7 CC BY 4.0`, 14, footerY+18);
+  ctx.fillText(`EcoRad \xb7 ${d.date} \xb7 EU Energy Label A–G (EU 2021/341) \xb7 CC BY 4.0`, 14, footerY+18);
   canvas.toBlob(blob => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1379,8 +1390,8 @@ function App() {
       ? `Custom GPU (${ecoLabel.customTdpW || 300} W TDP)`
       : ecoLabel.gpuModel;
     const aiTierObj = totalEnergyKwh > 0
-      ? (AI_TIERS.find(t => trainCo2 <= t.max) ?? AI_TIERS[4])
-      : {tier:'—', label:'Enter data above', color:'#90a4ae', bg:'#f5f5f5'};
+      ? (AI_TIERS.find(t => trainCo2 <= t.max) ?? AI_TIERS[AI_TIERS.length - 1])
+      : {tier:'—', label:'Enter data above', color:'#90a4ae', bg:'#f5f5f5', badgeColor:'#90a4ae', letterColor:'white'};
     return {
       projectName: ecoLabel.projectName || 'Untitled project',
       taskType: ecoLabel.taskType,
@@ -1395,6 +1406,7 @@ function App() {
       inferMonthlyKwh, inferCo2Month, inferStudies: Math.round(inferStudies),
       energyMeasured: ecoLabel.energyMeasured,
       tier: aiTierObj.tier, tierLabel: aiTierObj.label, tierColor: aiTierObj.color, tierBg: aiTierObj.bg,
+      tierBadgeColor: aiTierObj.badgeColor, tierLetterColor: aiTierObj.letterColor,
       date: new Date().toISOString().slice(0, 7),
     };
   }, [ecoLabel, settings.customCi]);
@@ -1409,8 +1421,8 @@ function App() {
     const co2PerStudy = annualStudies > 0 ? rnd(totalAnnualCo2 / annualStudies, 3) : 0;
     const kwhPerStudy = annualStudies > 0 ? rnd(annualKwh / annualStudies, 2) : 0;
     const tierObj = annualStudies > 0
-      ? (DEPT_TIERS.find(t => co2PerStudy <= t.max) ?? DEPT_TIERS[4])
-      : {tier:'—', label:'Enter data above', color:'#90a4ae', bg:'#f5f5f5'};
+      ? (DEPT_TIERS.find(t => co2PerStudy <= t.max) ?? DEPT_TIERS[DEPT_TIERS.length - 1])
+      : {tier:'—', label:'Enter data above', color:'#90a4ae', bg:'#f5f5f5', badgeColor:'#90a4ae', letterColor:'white'};
     const monthlyKwhSaving = deptLabel.activeInterventions.reduce(
       (s, name) => s + (INTERVENTIONS[name]?.kwh || 0), 0
     );
@@ -1419,7 +1431,7 @@ function App() {
     const potentialCo2PerStudy = annualStudies > 0
       ? rnd(Math.max(0, annualKwh - annualKwhSaving) * effectiveCi / annualStudies, 3) : 0;
     const potentialTierObj = annualStudies > 0
-      ? (DEPT_TIERS.find(t => potentialCo2PerStudy <= t.max) ?? DEPT_TIERS[4])
+      ? (DEPT_TIERS.find(t => potentialCo2PerStudy <= t.max) ?? DEPT_TIERS[DEPT_TIERS.length - 1])
       : tierObj;
     return {
       deptName: deptLabel.deptName || 'Unnamed Department',
@@ -1428,6 +1440,7 @@ function App() {
       ci, effectiveCi, renewablePct,
       annualKwh, annualStudies, totalAnnualCo2, co2PerStudy, kwhPerStudy,
       tier: tierObj.tier, tierLabel: tierObj.label, tierColor: tierObj.color, tierBg: tierObj.bg,
+      tierBadgeColor: tierObj.badgeColor, tierLetterColor: tierObj.letterColor,
       monthlyKwhSaving, annualKwhSaving, co2Saving,
       potentialCo2PerStudy, potentialTier: potentialTierObj.tier, potentialTierColor: potentialTierObj.color,
       interventionCount: deptLabel.activeInterventions.length,
@@ -2570,11 +2583,13 @@ function App() {
                 <div style={{color:'#A5D6A7', fontSize:13, marginTop:4}}>{ecoLabelData.projectName}</div>
                 <div style={{color:'#81C784', fontSize:11, marginTop:2}}>AI/ML Training Report · Radiology · {ecoLabelData.date}</div>
               </div>
-              <div style={{background:ecoLabelData.tierBg, padding:'18px 22px', display:'flex', alignItems:'center', gap:20}}>
-                <div style={{fontSize:64, fontWeight:900, color:ecoLabelData.tierColor, lineHeight:1, flexShrink:0}}>{ecoLabelData.tier}</div>
+              <div style={{background:ecoLabelData.tierBg, padding:'14px 18px', display:'flex', alignItems:'center', gap:16}}>
+                <div style={{width:64,height:64,background:ecoLabelData.tierBadgeColor,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <span style={{fontSize:42,fontWeight:900,color:ecoLabelData.tierLetterColor,lineHeight:1}}>{ecoLabelData.tier}</span>
+                </div>
                 <div>
-                  <div style={{fontWeight:700, fontSize:16, color:ecoLabelData.tierColor}}>Tier {ecoLabelData.tier} — {ecoLabelData.tierLabel}</div>
-                  <div style={{fontSize:13, color:'#263238', marginTop:4}}>
+                  <div style={{fontWeight:700, fontSize:15, color:ecoLabelData.tierColor}}>EU Energy Rating {ecoLabelData.tier} — {ecoLabelData.tierLabel}</div>
+                  <div style={{fontSize:12, color:'#263238', marginTop:3}}>
                     {ecoLabelData.trainCo2 > 0
                       ? `${ecoLabelData.trainCo2} kgCO₂e total training`
                       : 'Enter training data above to calculate'}
@@ -2629,14 +2644,15 @@ function App() {
                 Markdown table: paste into LaTeX supplementary files, GitHub READMEs, or preprint appendices.
               </p>
               <div style={{marginTop:8}}>
-                <p className="note" style={{fontSize:12,marginBottom:8,fontWeight:700}}>Tier reference (total training kgCO₂e):</p>
-                {AI_TIERS.map(t=>(
-                  <div key={t.tier} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:4,fontWeight:ecoLabelData.tier===t.tier?700:400,color:ecoLabelData.tier===t.tier?'#263238':'#607d66'}}>
-                    <span style={{background:t.color,color:'white',borderRadius:4,padding:'1px 7px',fontWeight:900,fontSize:14,minWidth:18,textAlign:'center'}}>{t.tier}</span>
+                <p className="note" style={{fontSize:11,marginBottom:6,fontWeight:700}}>EU Energy Rating — total training kgCO₂e:</p>
+                {AI_TIERS.map((t,i)=>(
+                  <div key={t.tier} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:3,fontWeight:ecoLabelData.tier===t.tier?700:400,color:ecoLabelData.tier===t.tier?'#263238':'#607d66'}}>
+                    <span style={{background:t.badgeColor,color:t.letterColor,borderRadius:4,padding:'1px 7px',fontWeight:900,fontSize:13,minWidth:18,textAlign:'center'}}>{t.tier}</span>
                     <span>{t.label}</span>
-                    <span style={{marginLeft:'auto',fontFamily:'monospace',fontSize:11}}>{t.tier==='A'?'< 10':t.max===Infinity?'> 5,000':`≤ ${t.max.toLocaleString()}`}</span>
+                    <span style={{marginLeft:'auto',fontFamily:'monospace',fontSize:10}}>{i===0?`< ${AI_TIERS[0].max}`:t.max===Infinity?`> ${AI_TIERS[AI_TIERS.length-2].max.toLocaleString()}`:`≤ ${t.max.toLocaleString()}`} kg</span>
                   </div>
                 ))}
+                <p className="note" style={{fontSize:10,marginTop:6}}>Modelled on the <a href="https://europa.eu/youreurope/citizens/consumers/shopping/energy-labels/index_en.htm" target="_blank" rel="noreferrer" style={{color:'#2E7D32'}}>EU Energy Label</a> A–G scale (Regulation EU 2021/341).</p>
               </div>
             </div>
           </div>
@@ -2673,7 +2689,7 @@ function App() {
           {ecoLabelTab==='dept' && (<>
             <p className="note" style={{marginBottom:16}}>
               Generate a department-level sustainability label for ESG reports, accreditation submissions, or public sustainability disclosures.
-              Tier rating (A–E) is based on kgCO₂e per imaging study, benchmarked against published radiology carbon intensity data (Vosshenrich R et al., Curr Opin Urol 2024).
+              EU Energy Rating (A–G) is based on kgCO₂e per imaging study, benchmarked against published radiology carbon intensity data (Vosshenrich R et al., Curr Opin Urol 2024). The A–G scale is modelled on the <a href="https://europa.eu/youreurope/citizens/consumers/shopping/energy-labels/index_en.htm" target="_blank" rel="noreferrer" style={{color:'#2E7D32'}}>EU Energy Label</a> (Regulation EU 2021/341).
             </p>
 
             {/* ── Pre-fill from Radiology Dashboard ── */}
@@ -2751,13 +2767,15 @@ function App() {
                   <div style={{color:'#A5D6A7',fontSize:13,marginTop:4}}>{deptLabelData.deptName}</div>
                   <div style={{color:'#81C784',fontSize:11,marginTop:2}}>{deptLabelData.hospitalName ? `${deptLabelData.hospitalName} · ` : ''}{deptLabelData.region} · {deptLabelData.date}</div>
                 </div>
-                <div style={{background:deptLabelData.tierBg,padding:'20px 24px',display:'flex',alignItems:'center',gap:24}}>
-                  <div style={{fontSize:72,fontWeight:900,color:deptLabelData.tierColor,lineHeight:1,flexShrink:0}}>{deptLabelData.tier}</div>
+                <div style={{background:deptLabelData.tierBg,padding:'14px 18px',display:'flex',alignItems:'center',gap:16}}>
+                  <div style={{width:72,height:72,background:deptLabelData.tierBadgeColor,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                    <span style={{fontSize:48,fontWeight:900,color:deptLabelData.tierLetterColor,lineHeight:1}}>{deptLabelData.tier}</span>
+                  </div>
                   <div>
-                    <div style={{fontWeight:700,fontSize:18,color:deptLabelData.tierColor}}>Tier {deptLabelData.tier} — {deptLabelData.tierLabel}</div>
-                    <div style={{fontSize:14,color:'#263238',marginTop:4}}>{deptLabelData.co2PerStudy>0 ? `${deptLabelData.co2PerStudy} kgCO₂e per imaging study` : 'Enter data above to calculate'}</div>
+                    <div style={{fontWeight:700,fontSize:16,color:deptLabelData.tierColor}}>EU Energy Rating {deptLabelData.tier} — {deptLabelData.tierLabel}</div>
+                    <div style={{fontSize:13,color:'#263238',marginTop:3}}>{deptLabelData.co2PerStudy>0 ? `${deptLabelData.co2PerStudy} kgCO₂e per imaging study` : 'Enter data above to calculate'}</div>
                     {deptLabelData.interventionCount>0 && deptLabelData.potentialTier!==deptLabelData.tier && (
-                      <div style={{fontSize:12,color:'#2E7D32',marginTop:4}}>With active interventions → potential Tier {deptLabelData.potentialTier}</div>
+                      <div style={{fontSize:12,color:'#2E7D32',marginTop:3}}>With active interventions → potential Rating {deptLabelData.potentialTier}</div>
                     )}
                   </div>
                 </div>
@@ -2792,14 +2810,15 @@ function App() {
                   ESG paragraph: paste into your hospital's annual sustainability report or ESR Green Imaging self-assessment.
                 </p>
                 <div style={{marginTop:8}}>
-                  <p className="note" style={{fontSize:12,marginBottom:8,fontWeight:700}}>Tier reference (kgCO₂e / imaging study):</p>
-                  {DEPT_TIERS.map(t=>(
-                    <div key={t.tier} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:4,fontWeight:deptLabelData.tier===t.tier?700:400,color:deptLabelData.tier===t.tier?'#263238':'#607d66'}}>
-                      <span style={{background:t.color,color:'white',borderRadius:4,padding:'1px 7px',fontWeight:900,fontSize:14,minWidth:18,textAlign:'center'}}>{t.tier}</span>
+                  <p className="note" style={{fontSize:11,marginBottom:6,fontWeight:700}}>EU Energy Rating — kgCO₂e / imaging study:</p>
+                  {DEPT_TIERS.map((t,i)=>(
+                    <div key={t.tier} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:3,fontWeight:deptLabelData.tier===t.tier?700:400,color:deptLabelData.tier===t.tier?'#263238':'#607d66'}}>
+                      <span style={{background:t.badgeColor,color:t.letterColor,borderRadius:4,padding:'1px 7px',fontWeight:900,fontSize:13,minWidth:18,textAlign:'center'}}>{t.tier}</span>
                       <span>{t.label}</span>
-                      <span style={{marginLeft:'auto',fontFamily:'monospace',fontSize:11}}>{t.tier==='A'?'≤ 0.5':t.max===Infinity?'> 7.0':`≤ ${t.max}`}</span>
+                      <span style={{marginLeft:'auto',fontFamily:'monospace',fontSize:10}}>{i===0?`< ${DEPT_TIERS[0].max}`:t.max===Infinity?`> ${DEPT_TIERS[DEPT_TIERS.length-2].max}`:`≤ ${t.max}`} kg</span>
                     </div>
                   ))}
+                  <p className="note" style={{fontSize:10,marginTop:6}}>Modelled on the <a href="https://europa.eu/youreurope/citizens/consumers/shopping/energy-labels/index_en.htm" target="_blank" rel="noreferrer" style={{color:'#2E7D32'}}>EU Energy Label</a> A–G scale (Regulation EU 2021/341).</p>
                 </div>
               </div>
             </div>
