@@ -30,23 +30,18 @@ const CARBON_INTENSITY = {
 const TIME_MULT = {Monthly: 1, Quarterly: 3, Annual: 12};
 const TIME_LABEL = {Monthly: "/mo", Quarterly: "/qtr", Annual: "/yr"};
 
-// MRI field-strength variants. Power specs calibrated to MODALITY_BENCHMARKS annual kWh.
-// 3T: Heye JMRI 2023 (30 kW active mean) → ≈127 MWh/yr. 1.5T: high cryocooler idle → ≈233 MWh/yr.
-// 7T research: Heye 2023 45 kW active, high idle → ≈190 MWh/yr.
-// 0.35T permanent magnet: Klein 2024 → ≈18 MWh/yr (close to benchmark 16.1 MWh/yr).
-const MRI_VARIANTS = {
-  '3t':   {label:'3T',              active_kw:30, idle_kw:15,  standby_kw:5,   off_kw:0.5,  scans:1200, avoidable_idle_h:120},
-  '15t':  {label:'1.5T',            active_kw:22, idle_kw:32,  standby_kw:25,  off_kw:1.5,  scans:1000, avoidable_idle_h:120},
-  '7t':   {label:'7T Research',     active_kw:45, idle_kw:22,  standby_kw:8,   off_kw:1.0,  scans:300,  avoidable_idle_h:150},
-  '035t': {label:'0.35T Low-field', active_kw:6,  idle_kw:1.5, standby_kw:0.5, off_kw:0.05, scans:800,  avoidable_idle_h:80},
-};
-
 // Per-unit equipment specs — one row = one machine/set. Power values from literature (see sources.md).
-// Hours are typical monthly operational patterns for clinical radiology equipment.
-// CT: Acra-2024, CJRS-2022 40–80 kW range, mid-point 60 kW. X-ray/Mammo: AJR-2025-CT.
-// PET-CT: 22 kW active + 5 kW idle calibrated to MODALITY_BENCHMARKS 66,150 kWh/yr. Radiol-240398.
+// MRI specs calibrated to MODALITY_BENCHMARKS annual kWh (Heye JMRI 2023, Vosshenrich 2024, Klein 2024):
+//   0.35T permanent magnet → ≈18 MWh/yr. 1.5T superconducting (high cryocooler idle) → ≈233 MWh/yr.
+//   3T → ≈127 MWh/yr. 7T research → ≈190 MWh/yr.
+// CT: Acra-2024, CJRS-2022 40–80 kW range, mid-point 60 kW. Benchmark covers conventional CT only —
+//   photon-counting and dual-source DECT not yet stratified in the sustainability literature.
+// PET-CT: 22 kW active + 5 kW idle calibrated exactly to MODALITY_BENCHMARKS 66,150 kWh/yr.
 const EQUIPMENT_UNITS = {
-  mri:         {name:"MRI Scanner",    modality:"MRI",        active_kw:30,  idle_kw:15,  standby_kw:5,   off_kw:0.5,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:1200},
+  mri_035t:    {name:"MRI (0.35T)",    modality:"MRI",        active_kw:6,   idle_kw:1.5, standby_kw:0.5, off_kw:0.05, active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:80,  scans:800},
+  mri_15t:     {name:"MRI (1.5T)",     modality:"MRI",        active_kw:22,  idle_kw:32,  standby_kw:25,  off_kw:1.5,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:1000},
+  mri_3t:      {name:"MRI (3T)",       modality:"MRI",        active_kw:30,  idle_kw:15,  standby_kw:5,   off_kw:0.5,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:1200},
+  mri_7t:      {name:"MRI (7T)",       modality:"MRI",        active_kw:45,  idle_kw:22,  standby_kw:8,   off_kw:1.0,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:150, scans:300},
   ct:          {name:"CT Scanner",     modality:"CT",         active_kw:60,  idle_kw:8,   standby_kw:3,   off_kw:0.2,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:1800},
   petct:       {name:"PET-CT",         modality:"PET-CT",     active_kw:22,  idle_kw:5,   standby_kw:2,   off_kw:0.3,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:100, scans:400},
   xray:        {name:"X-ray Room",     modality:"X-ray",      active_kw:12,  idle_kw:2,   standby_kw:0.6, off_kw:0.1,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:2500},
@@ -56,23 +51,15 @@ const EQUIPMENT_UNITS = {
   workstations:{name:"Workstations",   modality:"Workstation",active_kw:2,   idle_kw:0.8, standby_kw:0.2, off_kw:0.05, active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:0},
 };
 
-// mriType is stored inside the equipment object (not a count, filtered out in buildFleet)
-const DEFAULT_EQUIPMENT = {mri:1, mriType:'3t', ct:1, petct:0, xray:1, ultrasound:1, mammography:0, pacs:1, workstations:4};
+const DEFAULT_EQUIPMENT = {mri_035t:0, mri_15t:0, mri_3t:1, mri_7t:0, ct:1, petct:0, xray:1, ultrasound:1, mammography:0, pacs:1, workstations:4};
 
-// Build a fleet array from equipment counts.
-// mriType is a string key inside the equipment object, not a count — skip it in the iteration.
-// Power scales linearly with count; avoidable_idle_h is hours/period (does not scale with count).
+// Build a fleet array from equipment counts — scales power by count, hours stay per-unit.
 function buildFleet(equipment) {
-  const eq = equipment ?? DEFAULT_EQUIPMENT;
-  const mriV = MRI_VARIANTS[eq.mriType ?? '3t'] ?? MRI_VARIANTS['3t'];
-  return Object.entries(eq)
-    .filter(([key, val]) => key !== 'mriType' && typeof val === 'number' && val > 0)
+  return Object.entries(equipment ?? DEFAULT_EQUIPMENT)
+    .filter(([, n]) => typeof n === 'number' && n > 0)
     .map(([key, n]) => {
-      const base = EQUIPMENT_UNITS[key];
-      if (!base) return null;
-      const u = key === 'mri'
-        ? {...base, ...mriV, name:`MRI (${mriV.label})`}
-        : base;
+      const u = EQUIPMENT_UNITS[key];
+      if (!u) return null;
       return {
         ...u,
         name:       n > 1 ? `${n}× ${u.name}` : u.name,
@@ -86,10 +73,18 @@ function buildFleet(equipment) {
     .filter(Boolean);
 }
 
-// UI card definitions for the equipment picker (order = grid display order)
-const EQUIP_CARDS = [
-  {key:'mri',         label:'MRI',          Icon:Brain,    hasMriVariant:true},
-  {key:'ct',          label:'CT',           Icon:Activity},
+// MRI cards rendered as a separate grouped section; other cards below.
+// CT tooltip flags the absence of published PCCT/DECT benchmarks.
+const CT_TOOLTIP = 'Energy benchmark covers conventional CT (energy-integrating detector). Photon-counting CT and dual-source DECT are not yet stratified in the radiology sustainability literature — enter vendor TDP if known.';
+
+const MRI_CARDS = [
+  {key:'mri_035t', label:'MRI 0.35T', sublabel:'Low-field / permanent magnet', Icon:Brain},
+  {key:'mri_15t',  label:'MRI 1.5T',  sublabel:'Superconducting (high idle)',   Icon:Brain},
+  {key:'mri_3t',   label:'MRI 3T',    sublabel:'State-of-the-art',              Icon:Brain},
+  {key:'mri_7t',   label:'MRI 7T',    sublabel:'Research scanner',              Icon:Brain},
+];
+const OTHER_CARDS = [
+  {key:'ct',          label:'CT',           Icon:Activity, tooltip:CT_TOOLTIP},
   {key:'petct',       label:'PET-CT',       Icon:Cpu},
   {key:'xray',        label:'X-ray',        Icon:Zap},
   {key:'ultrasound',  label:'Ultrasound',   Icon:Droplets},
@@ -1416,63 +1411,57 @@ function App() {
             <h1 style={{fontSize:52,lineHeight:1.05,margin:'0 0 20px'}}>How much CO₂ does your department emit?</h1>
             {/* Equipment card grid */}
             <div style={{marginBottom:16}}>
-              <div style={{fontWeight:700,color:'#2E7D32',fontSize:13,marginBottom:10,letterSpacing:'0.03em',textTransform:'uppercase'}}>Equipment in your department</div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:10}}>
-                {EQUIP_CARDS.map(({key, label, Icon, hasMriVariant}) => {
-                  const count = settings.equipment[key] ?? 0;
-                  const active = count > 0;
-                  const mriType = settings.equipment.mriType ?? '3t';
-                  const cardLabel = hasMriVariant ? `MRI ${MRI_VARIANTS[mriType]?.label ?? '3T'}` : label;
-                  return (
-                    <div key={key} style={{
-                      background: active ? '#e8f5e9' : '#f9f9f9',
-                      border: `2px solid ${active ? '#a5d6a7' : '#e0e0e0'}`,
-                      borderRadius: 14,
-                      padding: hasMriVariant ? '8px 8px 6px' : '10px 8px 8px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: 4,
-                      transition: 'border-color 0.15s, background 0.15s',
-                    }}>
-                      <Icon size={18} style={{color: active ? '#2E7D32' : '#bdbdbd', flexShrink:0}}/>
-                      <div style={{fontSize:10,fontWeight:700,color: active ? '#1b5e20' : '#9e9e9e',textAlign:'center',lineHeight:1.2,letterSpacing:'0.01em'}}>{cardLabel}</div>
-                      {/* MRI field-strength selector */}
-                      {hasMriVariant && (
-                        <select
-                          value={mriType}
-                          onChange={e => setEquip('mriType', e.target.value)}
-                          style={{
-                            width:'100%', padding:'2px 2px',
-                            border:`1px solid ${active ? '#a5d6a7' : '#e0e0e0'}`,
-                            borderRadius:6, fontSize:10, background:'white',
-                            color: active ? '#1b5e20' : '#9e9e9e',
-                            fontWeight:600, textAlign:'center', cursor:'pointer',
-                          }}
-                        >
-                          {Object.entries(MRI_VARIANTS).map(([k,v])=>(
-                            <option key={k} value={k}>{v.label}</option>
-                          ))}
-                        </select>
-                      )}
-                      {/* Count selector */}
-                      <select
-                        value={count}
-                        onChange={e => setEquip(key, Number(e.target.value))}
-                        style={{
-                          width:'100%', padding:'3px 2px',
-                          border:`1px solid ${active ? '#a5d6a7' : '#e0e0e0'}`,
-                          borderRadius:8, fontSize:13, background:'white',
-                          color: active ? '#1b5e20' : '#9e9e9e',
-                          fontWeight:700, textAlign:'center', cursor:'pointer',
-                        }}
-                      >
-                        {Array.from({length:21},(_,i)=><option key={i} value={i}>{i === 0 ? '— none' : i}</option>)}
-                      </select>
-                    </div>
-                  );
-                })}
-              </div>
+              <div style={{fontWeight:700,color:'#2E7D32',fontSize:13,marginBottom:8,letterSpacing:'0.03em',textTransform:'uppercase'}}>Equipment in your department</div>
+
+              {/* MRI section */}
+              {[{cards:MRI_CARDS,label:'MRI scanners'},{cards:OTHER_CARDS,label:'Other equipment'}].map(({cards,label})=>(
+                <div key={label} style={{marginBottom:10}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'#90a4ae',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:6,display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{flex:1,height:1,background:'#e0e0e0',display:'inline-block'}}/>
+                    {label}
+                    <span style={{flex:1,height:1,background:'#e0e0e0',display:'inline-block'}}/>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
+                    {cards.map(({key, label:cardLabel, sublabel, Icon, tooltip}) => {
+                      const count = settings.equipment[key] ?? 0;
+                      const active = count > 0;
+                      return (
+                        <div key={key} title={tooltip ?? undefined} style={{
+                          background: active ? '#e8f5e9' : '#f9f9f9',
+                          border: `2px solid ${active ? '#a5d6a7' : '#e0e0e0'}`,
+                          borderRadius: 14,
+                          padding: '10px 8px 8px',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                          transition: 'border-color 0.15s, background 0.15s',
+                          position: 'relative',
+                        }}>
+                          {tooltip && (
+                            <span style={{position:'absolute',top:5,right:7,fontSize:10,color:'#90a4ae',fontWeight:700,cursor:'help'}}>ⓘ</span>
+                          )}
+                          <Icon size={18} style={{color: active ? '#2E7D32' : '#bdbdbd'}}/>
+                          <div style={{fontSize:10,fontWeight:700,color: active ? '#1b5e20' : '#9e9e9e',textAlign:'center',lineHeight:1.2}}>{cardLabel}</div>
+                          {sublabel && (
+                            <div style={{fontSize:9,color: active ? '#4CAF50' : '#bdbdbd',textAlign:'center',lineHeight:1.2}}>{sublabel}</div>
+                          )}
+                          <select
+                            value={count}
+                            onChange={e => setEquip(key, Number(e.target.value))}
+                            style={{
+                              width:'100%', padding:'3px 2px', marginTop:2,
+                              border:`1px solid ${active ? '#a5d6a7' : '#e0e0e0'}`,
+                              borderRadius:8, fontSize:13, background:'white',
+                              color: active ? '#1b5e20' : '#9e9e9e',
+                              fontWeight:700, textAlign:'center', cursor:'pointer',
+                            }}
+                          >
+                            {Array.from({length:21},(_,i)=><option key={i} value={i}>{i === 0 ? '— none' : i}</option>)}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
             {/* Region + time period row */}
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:16}}>
