@@ -105,7 +105,7 @@ const MRI_CARDS = [
 // LLM: A100-class cloud GPU for report generation (LLM-Energy PDF, Radiology 2024).
 // Reconstruction: on-site low-latency inference (Radiol 2023, doi:10.1148/radiol.230441).
 const AI_PRESETS = [
-  {key:'cad',   label:'CAD Screening',       Icon:Target,    gpu:'NVIDIA RTX A6000',      hoursPerDay:'6',  numGpus:'1', deployment:'Local compute', sublabel:'Detection / classification'},
+  {key:'cad',   label:'Detection AI',         Icon:Target,    gpu:'NVIDIA RTX A6000',      hoursPerDay:'6',  numGpus:'1', deployment:'Local compute', sublabel:'Detection / classification'},
   {key:'llm',   label:'LLM Report Assistant',Icon:Brain,     gpu:'NVIDIA A100 (40GB PCIe)',hoursPerDay:'8',  numGpus:'1', deployment:'AWS',           sublabel:'NLP / report generation'},
   {key:'recon', label:'Reconstruction AI',   Icon:Cpu,       gpu:'NVIDIA RTX A6000',      hoursPerDay:'12', numGpus:'1', deployment:'Local compute', sublabel:'MR/CT deep learning recon'},
   {key:'seg',   label:'Segmentation AI',     Icon:BarChart3, gpu:'NVIDIA T4',             hoursPerDay:'4',  numGpus:'1', deployment:'Local compute', sublabel:'Organ / lesion U-Net'},
