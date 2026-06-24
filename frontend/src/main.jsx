@@ -1181,7 +1181,8 @@ function App() {
 
   const set  = (key, val) => setSettings(s => ({...s, [key]: val}));
   const setS = (key, val) => setScen(s => ({...s, [key]: val}));
-  const [aiTab,   setAiTab]   = useState('model');
+  const [aiTab,         setAiTab]         = useState('model');
+  const [trainExpanded, setTrainExpanded] = useState(false);
   const [dashTab, setDashTab] = useState('equiv');
   const [equivScope, setEquivScope] = useState('scope2');
   const [landingAIOpen, setLandingAIOpen] = useState(false);
@@ -1959,86 +1960,98 @@ function App() {
           <p className="note" style={{marginBottom:16}}>Recycling Pyramid priority: Prevent unnecessary scans → Reduce scan energy → Recover/recycle prior data. (Implementation Guide §1)</p>
 
           {/* ── Sticky controls: selectors + summary bar + tabs ── */}
-          <div className="stickyControls">
-            <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:6,marginBottom:12}}>
-              <span style={{fontSize:11,color:'#90a4ae',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.05em',marginRight:4}}>Quick load:</span>
+          <div className="stickyControls" style={{padding:'12px 16px'}}>
+            {/* Quick load chips */}
+            <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:5,marginBottom:8}}>
+              <span style={{fontSize:10,color:'#90a4ae',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.05em',marginRight:2}}>Quick load:</span>
               {AI_PRESETS.filter(p=>p.aiDash).map(({key,label,Icon,aiDash})=>(
                 <button key={key} onClick={()=>{setS('architecture',aiDash.architecture);setS('modelSize',aiDash.modelSize);setS('precision',aiDash.precision);}} style={{
-                  display:'inline-flex',alignItems:'center',gap:5,
+                  display:'inline-flex',alignItems:'center',gap:4,
                   background: scen.architecture===aiDash.architecture && scen.modelSize===aiDash.modelSize ? '#c8e6c9' : '#f1f8f1',
-                  border:'1.5px solid #c8e6c9',borderRadius:10,padding:'4px 12px',
-                  cursor:'pointer',fontSize:11,fontWeight:700,color:'#2E7D32',
+                  border:'1.5px solid #c8e6c9',borderRadius:8,padding:'3px 9px',
+                  cursor:'pointer',fontSize:10,fontWeight:700,color:'#2E7D32',
                 }}>
-                  <Icon size={11}/>{label}
+                  <Icon size={10}/>{label}
                 </button>
               ))}
             </div>
-            <div className="grid">
-              <Sel label="Architecture"        value={scen.architecture}  options={META.architectures}   onChange={v=>setS('architecture',v)}/>
-              <Sel label="Model size"          value={scen.modelSize}     options={META.modelSizes}      onChange={v=>setS('modelSize',v)}/>
-              <Sel label="Precision / AMP"     value={scen.precision}     options={META.precisions}      onChange={v=>setS('precision',v)}/>
-              <Sel label="Cloud / deployment"  value={scen.cloudProvider} options={META.cloudProviders}  onChange={v=>setS('cloudProvider',v)}/>
+
+            {/* 4 main selectors — compact row */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
+              <Sel label="Architecture"       value={scen.architecture}  options={META.architectures}  onChange={v=>setS('architecture',v)}/>
+              <Sel label="Model size"         value={scen.modelSize}     options={META.modelSizes}     onChange={v=>setS('modelSize',v)}/>
+              <Sel label="Precision / AMP"    value={scen.precision}     options={META.precisions}     onChange={v=>setS('precision',v)}/>
+              <Sel label="Cloud / deployment" value={scen.cloudProvider} options={META.cloudProviders} onChange={v=>setS('cloudProvider',v)}/>
             </div>
-            <div style={{marginTop:10,paddingTop:10,borderTop:'1px solid #eef7ee'}}>
-              {(()=>{
-                const gp = GPU_PRESETS[scen.trainGpu];
-                const h  = parseFloat(scen.trainHours) || 0;
-                const n  = Math.max(1, parseInt(scen.trainNumGpus) || 1);
-                const pue = CLOUD[scen.cloudProvider]?.pue ?? 1.5;
-                const estKwh = gp && h > 0 ? rnd(gp.tdpKw * n * h * pue, 1) : null;
-                return (<>
-                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-                    <span style={{fontSize:11,fontWeight:700,color:'#607d66'}}>Training energy estimator</span>
+
+            {/* Collapsible training assumptions */}
+            {(()=>{
+              const gp = GPU_PRESETS[scen.trainGpu];
+              const h  = parseFloat(scen.trainHours) || 0;
+              const n  = Math.max(1, parseInt(scen.trainNumGpus) || 1);
+              const pue = CLOUD[scen.cloudProvider]?.pue ?? 1.5;
+              const estKwh = gp && h > 0 ? rnd(gp.tdpKw * n * h * pue, 1) : null;
+              return (
+                <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid #eef7ee'}}>
+                  <button onClick={()=>setTrainExpanded(v=>!v)} style={{
+                    background:'none',border:'none',padding:0,cursor:'pointer',
+                    display:'flex',alignItems:'center',gap:6,width:'100%',
+                  }}>
+                    <span style={{fontSize:11,fontWeight:700,color:'#607d66'}}>Training assumptions</span>
                     {estKwh !== null
-                      ? <span style={{fontSize:11,background:'#e8f5e9',color:'#2E7D32',padding:'2px 10px',borderRadius:10,fontWeight:700}}>{estKwh} kWh estimated</span>
-                      : <span style={{fontSize:11,color:'#90a4ae'}}>select GPU + hours below, or leave blank to use model-size default</span>
+                      ? <span style={{fontSize:10,background:'#e8f5e9',color:'#2E7D32',padding:'1px 8px',borderRadius:8,fontWeight:700}}>{estKwh} kWh</span>
+                      : <span style={{fontSize:10,color:'#90a4ae'}}>model default · {AI_MODELS[scen.modelSize]?.trainMwh * 1000} kWh</span>
                     }
-                  </div>
-                  <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:8,marginBottom:8}}>
-                    <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:700,color:'#2E7D32',fontSize:12}}>
-                      Training GPU
-                      <select value={scen.trainGpu} onChange={e=>setS('trainGpu',e.target.value)} style={{padding:'7px 10px',border:'1px solid #c8e6c9',borderRadius:10,fontSize:12,background:'white'}}>
-                        <option value="">— use model default —</option>
-                        {META.gpuModels.map(g=><option key={g} value={g}>{g}</option>)}
-                      </select>
-                    </label>
-                    <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:700,color:'#2E7D32',fontSize:12}}>
-                      # GPUs
-                      <input type="number" min="1" value={scen.trainNumGpus} onChange={e=>setS('trainNumGpus',e.target.value)} placeholder="1" style={{padding:'7px 10px',border:'1px solid #c8e6c9',borderRadius:10,fontSize:12,background:'white'}}/>
-                    </label>
-                    <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:700,color:'#2E7D32',fontSize:12}}>
-                      Training hours
-                      <input type="number" min="0" step="0.5" value={scen.trainHours} onChange={e=>setS('trainHours',e.target.value)} placeholder="e.g. 48" style={{padding:'7px 10px',border:'1px solid #c8e6c9',borderRadius:10,fontSize:12,background:'white'}}/>
-                    </label>
-                  </div>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                    <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:700,color:'#2E7D32',fontSize:12}}>
-                      Test set size (studies)
-                      <input type="number" min="1" value={scen.testStudies} onChange={e=>setS('testStudies',e.target.value)} placeholder="default: 500" style={{padding:'7px 10px',border:'1px solid #c8e6c9',borderRadius:10,fontSize:12,background:'white'}}/>
-                    </label>
-                    <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:700,color:'#2E7D32',fontSize:12}}>
-                      Deployment lifespan (months)
-                      <input type="number" min="1" value={scen.deployMonths} onChange={e=>setS('deployMonths',e.target.value)} placeholder="default: 36" style={{padding:'7px 10px',border:'1px solid #c8e6c9',borderRadius:10,fontSize:12,background:'white'}}/>
-                    </label>
-                  </div>
-                  <p className="note" style={{fontSize:11,marginTop:5,marginBottom:0}}>
-                    GPU TDP × count × hours × PUE → training energy. PUE is taken from the selected cloud/deployment above.
-                    Test set and lifespan affect amortisation and one-time test CO₂.
-                  </p>
-                </>);
-              })()}
-            </div>
-            <div className="aiSummary">
+                    <span style={{fontSize:11,color:'#90a4ae',marginLeft:'auto'}}>{trainExpanded ? '▴ collapse' : '▾ expand'}</span>
+                  </button>
+                  {trainExpanded && (
+                    <div style={{marginTop:8}}>
+                      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:6,marginBottom:6}}>
+                        <label style={{display:'flex',flexDirection:'column',gap:3,fontWeight:700,color:'#2E7D32',fontSize:11}}>
+                          Training GPU
+                          <select value={scen.trainGpu} onChange={e=>setS('trainGpu',e.target.value)} style={{padding:'5px 8px',border:'1px solid #c8e6c9',borderRadius:8,fontSize:11,background:'white'}}>
+                            <option value="">— model default —</option>
+                            {META.gpuModels.map(g=><option key={g} value={g}>{g}</option>)}
+                          </select>
+                        </label>
+                        <label style={{display:'flex',flexDirection:'column',gap:3,fontWeight:700,color:'#2E7D32',fontSize:11}}>
+                          # GPUs
+                          <input type="number" min="1" value={scen.trainNumGpus} onChange={e=>setS('trainNumGpus',e.target.value)} placeholder="1" style={{padding:'5px 8px',border:'1px solid #c8e6c9',borderRadius:8,fontSize:11,background:'white'}}/>
+                        </label>
+                        <label style={{display:'flex',flexDirection:'column',gap:3,fontWeight:700,color:'#2E7D32',fontSize:11}}>
+                          Hours
+                          <input type="number" min="0" step="0.5" value={scen.trainHours} onChange={e=>setS('trainHours',e.target.value)} placeholder="e.g. 48" style={{padding:'5px 8px',border:'1px solid #c8e6c9',borderRadius:8,fontSize:11,background:'white'}}/>
+                        </label>
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+                        <label style={{display:'flex',flexDirection:'column',gap:3,fontWeight:700,color:'#2E7D32',fontSize:11}}>
+                          Test set (studies)
+                          <input type="number" min="1" value={scen.testStudies} onChange={e=>setS('testStudies',e.target.value)} placeholder="500" style={{padding:'5px 8px',border:'1px solid #c8e6c9',borderRadius:8,fontSize:11,background:'white'}}/>
+                        </label>
+                        <label style={{display:'flex',flexDirection:'column',gap:3,fontWeight:700,color:'#2E7D32',fontSize:11}}>
+                          Lifespan (months)
+                          <input type="number" min="1" value={scen.deployMonths} onChange={e=>setS('deployMonths',e.target.value)} placeholder="36" style={{padding:'5px 8px',border:'1px solid #c8e6c9',borderRadius:8,fontSize:11,background:'white'}}/>
+                        </label>
+                      </div>
+                      <p className="note" style={{fontSize:10,marginTop:4,marginBottom:0}}>GPU TDP × count × hours × PUE. PUE from cloud/deployment above. Lifespan affects amortisation.</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Summary pills + tabs */}
+            <div className="aiSummary" style={{marginTop:8,paddingTop:8}}>
               <span>Net impact <b style={{color: ai.netKgCo2e < 0 ? '#2E7D32' : '#c62828'}}>{ai.netKgCo2e} kgCO₂e/mo</b></span>
               <span>Efficiency <b>{ai.efficiencyRatio} acc%/kWh</b></span>
               <span>Cloud CI <b>{ai.cloudCi} kgCO₂e/kWh</b></span>
             </div>
-            <div className="aiTabs">
-              {[['model','Model'],['training','Training'],['testing','Testing'],['inference','Inference'],['carbon','Carbon'],['clinical','Clinical']].map(([id,label])=>(
+            <div className="aiTabs" style={{marginTop:8}}>
+              {[['model','Model'],['training','Training'],['testing','Testing'],['inference','Inference'],['carbon','Carbon'],['clinical','Clinical']].map(([id,lbl])=>(
                 <button key={id} className={aiTab===id?'on':''} onClick={()=>{
                   setAiTab(id);
                   document.getElementById('ai-'+id)?.scrollIntoView({behavior:'smooth',block:'start'});
-                }}>{label}</button>
+                }}>{lbl}</button>
               ))}
             </div>
           </div>
