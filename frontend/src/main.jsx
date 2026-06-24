@@ -58,6 +58,10 @@ const EQUIPMENT_UNITS = {
 
 const DEFAULT_EQUIPMENT = {mri_035t:0, mri_15t:0, mri_3t:1, mri_7t:0, ct:1, petct:0, angio:0, fluoro:0, xray:1, ultrasound:1, mammography:0, pacs:1, workstations:4};
 
+// Estimated FTE per device — derived from NHS/BIR radiology workforce benchmarks.
+// Imaging devices include technologists, radiologist share, nursing/admin; PACS = IT; workstations = reading radiologists.
+const STAFF_PER_DEVICE = {mri_035t:4, mri_15t:5, mri_3t:5, mri_7t:6, ct:4, petct:5, angio:6, fluoro:3, xray:3, ultrasound:2, mammography:2, pacs:2, workstations:1};
+
 // Build a fleet array from equipment counts — scales power by count, hours stay per-unit.
 function buildFleet(equipment) {
   return Object.entries(equipment ?? DEFAULT_EQUIPMENT)
@@ -1157,7 +1161,6 @@ function App() {
     metricType: "Energy",
     timePeriod: "Monthly",
     customCi: "0.30",
-    staffCount: '10',
     staffCommuteKm: '15',
     ...readHash(),
   }));
@@ -1297,12 +1300,16 @@ function App() {
   }, [landingAIOpen, landingAIKwh, settings.region, settings.customCi]);
 
   // ── Scope 3 extensions (Doo et al. JACR 2024) ──────────────────────────────
+  const derivedStaffCount = useMemo(() =>
+    Object.entries(settings.equipment).reduce((sum, [key, n]) =>
+      sum + (STAFF_PER_DEVICE[key] ?? 0) * Math.max(0, n || 0), 0),
+  [settings.equipment]);
+
   const staffCommuteCo2 = useMemo(() => {
     const mult = TIME_MULT[settings.timePeriod] ?? 1;
-    const n  = Math.max(0, parseInt(settings.staffCount)    || 0);
     const km = Math.max(0, parseFloat(settings.staffCommuteKm) || 0);
-    return rnd(n * km * 2 * STAFF_DAYS_PER_MO * mult * CAR_CO2_KG_KM, 1);
-  }, [settings.staffCount, settings.staffCommuteKm, settings.timePeriod]);
+    return rnd(derivedStaffCount * km * 2 * STAFF_DAYS_PER_MO * mult * CAR_CO2_KG_KM, 1);
+  }, [derivedStaffCount, settings.staffCommuteKm, settings.timePeriod]);
 
   const networkTransferCo2 = useMemo(() => {
     const ci = getCI(settings.region, settings.customCi);
@@ -1574,17 +1581,6 @@ function App() {
                 <p className="note" style={{marginTop:6,fontSize:12}}>Enter your local utility or national grid factor. Global avg: 0.473 · EU avg: 0.237 (Vosshenrich et al.)</p>
               </div>
             )}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:8}}>
-              <label style={{fontWeight:700,color:'#2E7D32',display:'flex',flexDirection:'column',gap:8,fontSize:14}}>
-                Staff commuting (# people)
-                <input type="number" min="0" value={settings.staffCount} onChange={e=>set('staffCount',e.target.value)} placeholder="e.g. 10"/>
-              </label>
-              <label style={{fontWeight:700,color:'#2E7D32',display:'flex',flexDirection:'column',gap:8,fontSize:14}}>
-                Avg one-way commute (km)
-                <input type="number" min="0" value={settings.staffCommuteKm} onChange={e=>set('staffCommuteKm',e.target.value)} placeholder="e.g. 15"/>
-              </label>
-            </div>
-            <p className="note" style={{marginBottom:16,fontSize:12}}>Scope 3 staff commute — DEFRA 2023 car emission factor. Doo et al. JACR 2024.</p>
 
             {!landingAIOpen ? (
               <button onClick={()=>setLandingAIOpen(true)} style={{background:'none',border:'1.5px dashed #81C784',color:'#2E7D32',borderRadius:14,padding:'8px 18px',cursor:'pointer',fontSize:14,fontWeight:600}}>
@@ -1870,12 +1866,23 @@ function App() {
           <section id="dash-carbon" className="aiSection" style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
             <h2 style={{marginBottom:12}}>2. Carbon emissions — GHG Protocol scopes</h2>
             <p className="note" style={{marginBottom:12}}>Scope 1: direct fuel (estimated). Scope 2: purchased electricity. Scope 3: embodied carbon + patient travel + staff commute + DICOM data transfer (all estimated). All {dash.totals.label}. Framework: Doo et al. JACR 2024.</p>
+            <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:14,background:'#f1f8f1',borderRadius:12,padding:'8px 16px',flexWrap:'wrap'}}>
+              <span style={{fontSize:12,color:'#607d66'}}>
+                Staff commute — <strong style={{color:'#263238'}}>{derivedStaffCount} FTE estimated</strong> from {Object.values(settings.equipment).reduce((s,n)=>s+(n||0),0)} devices (NHS/BIR workforce ratios)
+              </span>
+              <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,fontWeight:700,color:'#2E7D32',marginLeft:'auto'}}>
+                Avg one-way commute
+                <input type="number" min="0" step="1" value={settings.staffCommuteKm} onChange={e=>set('staffCommuteKm',e.target.value)}
+                  style={{width:60,padding:'4px 8px',border:'1px solid #c8e6c9',borderRadius:8,fontSize:12,background:'white'}}/>
+                km
+              </label>
+            </div>
             <div className="cards">
               <Card icon={<Factory/>}    title="Scope 1 — Direct"          value={fmtCo2(dash.scopes.scope1Kg)}       sub="Backup generators, medical gas. Estimated 8% of Scope 2 (McKee 2024)."/>
               <Card icon={<Gauge/>}      title="Scope 2 — Electricity"     value={fmtCo2(dash.scopes.scope2Kg + landingAICo2)}  sub={`Grid at ${dash.ci} kgCO₂e/kWh (${settings.region}).${landingAICo2>0?` Includes ${fmtCo2(landingAICo2)} from AI tools.`:' Primary measured scope.'}`}/>
               <Card icon={<Cpu/>}        title="Scope 3 — Embodied carbon" value={fmtCo2(dash.scopes.scope3EmbKg)}    sub="Hardware manufacturing amortised over lifespan. Extend lifetime to reduce."/>
               <Card icon={<Car/>}        title="Scope 3 — Patient travel"  value={fmtCo2(dash.scopes.scope3TravelKg)} sub={`${dash.scopes.imagingScans.toLocaleString()} scans × ${PATIENT_KM_RT} km avg round trip.`}/>
-              <Card icon={<Car/>}        title="Scope 3 — Staff commute"   value={fmtCo2(staffCommuteCo2)}            sub={`${settings.staffCount} staff × ${settings.staffCommuteKm} km one-way × ${STAFF_DAYS_PER_MO} days/mo. Edit on Home page. DEFRA 2023.`}/>
+              <Card icon={<Car/>}        title="Scope 3 — Staff commute"   value={fmtCo2(staffCommuteCo2)}            sub={`~${derivedStaffCount} staff (estimated from device fleet) × ${settings.staffCommuteKm} km one-way × ${STAFF_DAYS_PER_MO} days/mo. DEFRA 2023.`}/>
               <Card icon={<Wifi/>}       title="Scope 3 — Data transfer"   value={fmtCo2(networkTransferCo2)}         sub={`${dash.scopes.imagingScans.toLocaleString()} studies × ${AVG_STUDY_GB} GB avg × 0.001 kWh/GB. DICOM network energy (Aslan et al. 2018).`}/>
             </div>
             <section style={{marginTop:16}}>
