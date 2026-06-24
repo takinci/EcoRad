@@ -549,14 +549,17 @@ function computeScenario(intervention, region, timePeriod, equipment, customCi, 
   };
 }
 
-function computeAI(cloudProvider, region, modelSize, precision, architecture, customCi, equipment) {
+function computeAI(cloudProvider, region, modelSize, precision, architecture, customCi, equipment, overrides = {}) {
   const cf    = CLOUD[cloudProvider]          ?? CLOUD["Local compute"];
   const ci    = getCI(region, customCi);
   const model = AI_MODELS[modelSize]           ?? AI_MODELS["Small (< 100M params)"];
   const arch  = AI_ARCHITECTURES[architecture] ?? AI_ARCHITECTURES["CNN / ResNet"];
   const ampF  = PRECISION_FACTOR[precision]    ?? 1.0;
-  const DEPLOY_MO    = 36;
-  const TEST_STUDIES = 500;
+  const DEPLOY_MO    = Math.max(1,  parseInt(overrides.deployMonths) || 36);
+  const TEST_STUDIES = Math.max(1,  parseInt(overrides.testStudies)  || 500);
+  const trainMwhBase = overrides.trainMwh && parseFloat(overrides.trainMwh) > 0
+    ? parseFloat(overrides.trainMwh)
+    : model.trainMwh;
   // Derive scan volume and per-scan energy from the user's equipment fleet
   const profileDash  = computeDashboard(region, 'Monthly', equipment, customCi);
   const STUDIES      = profileDash.scopes.imagingScans;               // imaging scans/month for this profile
@@ -566,7 +569,7 @@ function computeAI(cloudProvider, region, modelSize, precision, architecture, cu
   // Total one-time training energy scaled by architecture and model size.
   // Developer tools: CodeCarbon, EcoLogits, Carbontracker (Implementation Guide §4)
   // Sources: LLM-Energy PDF; Doo 2024 (10.1148/radiol.232030)
-  const trainKwhTotal  = rnd(model.trainMwh * 1000 * arch.trainFactor, 0);
+  const trainKwhTotal  = rnd(trainMwhBase * 1000 * arch.trainFactor, 0);
   const trainKgCo2e    = rnd(trainKwhTotal * cf.ci, 1);
   const trainGpuHours  = rnd(trainKwhTotal / model.gpuKw, 0); // estimated GPU compute time
   const trainKwhMonth  = rnd(trainKwhTotal / DEPLOY_MO, 2);   // amortised over deployment
@@ -1162,6 +1165,9 @@ function App() {
     modelSize: "Small (< 100M params)",
     precision: "float32 (standard)",
     architecture: "CNN / ResNet",
+    trainMwh: '',
+    testStudies: '500',
+    deployMonths: '36',
   });
 
   const set  = (key, val) => setSettings(s => ({...s, [key]: val}));
@@ -1260,7 +1266,7 @@ function App() {
   // Recalculate whenever settings change
   const dash     = useMemo(() => computeDashboard(settings.region, settings.timePeriod, settings.equipment, settings.customCi), [settings.region, settings.timePeriod, settings.equipment, settings.customCi]);
   const scenario = useMemo(() => computeScenario(scen.intervention, settings.region, settings.timePeriod, settings.equipment, settings.customCi, scen.cloudProvider, scen.scannerState), [scen.intervention, settings.region, settings.timePeriod, settings.equipment, settings.customCi, scen.cloudProvider, scen.scannerState]);
-  const ai       = useMemo(() => computeAI(scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.equipment), [scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.equipment]);
+  const ai       = useMemo(() => computeAI(scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.equipment, {trainMwh: scen.trainMwh, testStudies: scen.testStudies, deployMonths: scen.deployMonths}), [scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.equipment, scen.trainMwh, scen.testStudies, scen.deployMonths]);
 
   const landingAIKwh = useMemo(() => {
     if (!landingAIOpen) return 0;
@@ -1953,6 +1959,39 @@ function App() {
               <Sel label="Precision / AMP"     value={scen.precision}     options={META.precisions}      onChange={v=>setS('precision',v)}/>
               <Sel label="Cloud / deployment"  value={scen.cloudProvider} options={META.cloudProviders}  onChange={v=>setS('cloudProvider',v)}/>
             </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginTop:10,paddingTop:10,borderTop:'1px solid #eef7ee'}}>
+              <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:700,color:'#2E7D32',fontSize:12}}>
+                Training energy (MWh)
+                <input type="number" min="0" step="0.1"
+                  value={scen.trainMwh}
+                  onChange={e=>setS('trainMwh',e.target.value)}
+                  placeholder={`default: ${AI_MODELS[scen.modelSize]?.trainMwh ?? '—'} MWh`}
+                  style={{padding:'7px 10px',border:'1px solid #c8e6c9',borderRadius:10,fontSize:12,background:'white'}}
+                />
+              </label>
+              <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:700,color:'#2E7D32',fontSize:12}}>
+                Test set size (studies)
+                <input type="number" min="1"
+                  value={scen.testStudies}
+                  onChange={e=>setS('testStudies',e.target.value)}
+                  placeholder="default: 500"
+                  style={{padding:'7px 10px',border:'1px solid #c8e6c9',borderRadius:10,fontSize:12,background:'white'}}
+                />
+              </label>
+              <label style={{display:'flex',flexDirection:'column',gap:4,fontWeight:700,color:'#2E7D32',fontSize:12}}>
+                Deployment lifespan (months)
+                <input type="number" min="1"
+                  value={scen.deployMonths}
+                  onChange={e=>setS('deployMonths',e.target.value)}
+                  placeholder="default: 36"
+                  style={{padding:'7px 10px',border:'1px solid #c8e6c9',borderRadius:10,fontSize:12,background:'white'}}
+                />
+              </label>
+            </div>
+            <p className="note" style={{fontSize:11,marginTop:5,marginBottom:0}}>
+              Training energy: enter actual kWh from CodeCarbon or EcoLogits — overrides the model-size default.
+              Test set and lifespan affect training cost amortisation and one-time test CO₂.
+            </p>
             <div className="aiSummary">
               <span>Net impact <b style={{color: ai.netKgCo2e < 0 ? '#2E7D32' : '#c62828'}}>{ai.netKgCo2e} kgCO₂e/mo</b></span>
               <span>Efficiency <b>{ai.efficiencyRatio} acc%/kWh</b></span>
