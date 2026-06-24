@@ -1156,7 +1156,7 @@ function App() {
   const [dashTab, setDashTab] = useState('equiv');
   const [equivScope, setEquivScope] = useState('scope2');
   const [landingAIOpen, setLandingAIOpen] = useState(false);
-  const [landingAI, setLandingAI] = useState({taskPreset:'', gpu:'NVIDIA RTX A6000', hoursPerDay:'8', numGpus:'1', deployment:'Local compute'});
+  const [landingAITools, setLandingAITools] = useState({});
   const [ecoCopied, setEcoCopied] = useState(false);
   const [ecoLabel, setEcoLabel] = useState({
     projectName: '',
@@ -1361,13 +1361,15 @@ function App() {
   const cloudResult = useMemo(() => computeCloudCarbon(cloudTracker), [cloudTracker]);
 
   const landingAIKwh = useMemo(() => {
-    if (!landingAIOpen || !landingAI.taskPreset) return 0;
-    const tdpKw = GPU_PRESETS[landingAI.gpu]?.tdpKw ?? 0.3;
-    const hours = parseFloat(landingAI.hoursPerDay) || 0;
-    const n     = parseInt(landingAI.numGpus, 10) || 1;
-    const pue   = CLOUD[landingAI.deployment]?.pue ?? 1.5;
-    return rnd(tdpKw * n * hours * 30 * pue, 2);
-  }, [landingAIOpen, landingAI]);
+    if (!landingAIOpen) return 0;
+    return rnd(Object.values(landingAITools).reduce((sum, cfg) => {
+      const tdpKw = GPU_PRESETS[cfg.gpu]?.tdpKw ?? 0.3;
+      const hours = parseFloat(cfg.hoursPerDay) || 0;
+      const n     = parseInt(cfg.numGpus, 10) || 1;
+      const pue   = CLOUD[cfg.deployment]?.pue ?? 1.5;
+      return sum + tdpKw * n * hours * 30 * pue;
+    }, 0), 2);
+  }, [landingAIOpen, landingAITools]);
   const landingAICo2 = useMemo(() => {
     if (!landingAIOpen) return 0;
     return rnd(landingAIKwh * getCI(settings.region, settings.customCi), 2);
@@ -1523,17 +1525,22 @@ function App() {
               <div>
                 <div style={{fontSize:11,fontWeight:700,color:'#90a4ae',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:8,display:'flex',alignItems:'center',gap:8}}>
                   <span style={{flex:1,height:1,background:'#e0e0e0',display:'inline-block'}}/>
-                  AI / ML tools
+                  AI / ML tools — click to add
                   <span style={{flex:1,height:1,background:'#e0e0e0',display:'inline-block'}}/>
                 </div>
-                {/* Preset chips */}
+                {/* Preset chips — toggle each tool independently */}
                 <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:6,marginBottom:10}}>
                   {AI_PRESETS.map(({key,label,sublabel,Icon})=>{
-                    const active = landingAI.taskPreset === key;
+                    const active = !!landingAITools[key];
                     return (
                       <button key={key} onClick={()=>{
-                        const p = AI_PRESETS.find(x=>x.key===key);
-                        setLandingAI(a=>({...a,taskPreset:key,gpu:p.gpu,hoursPerDay:p.hoursPerDay,numGpus:p.numGpus,deployment:p.deployment}));
+                        if (active) {
+                          const {[key]:_removed, ...rest} = landingAITools;
+                          setLandingAITools(rest);
+                        } else {
+                          const p = AI_PRESETS.find(x=>x.key===key);
+                          setLandingAITools(t=>({...t,[key]:{gpu:p.gpu,hoursPerDay:p.hoursPerDay,numGpus:p.numGpus,deployment:p.deployment}}));
+                        }
                       }} style={{
                         display:'flex',flexDirection:'column',alignItems:'center',gap:3,
                         background: active ? '#e8f5e9' : '#f9f9f9',
@@ -1543,30 +1550,45 @@ function App() {
                       }}>
                         <Icon size={16} style={{color: active ? '#2E7D32' : '#bdbdbd'}}/>
                         <span style={{fontSize:9,fontWeight:700,color: active ? '#1b5e20' : '#9e9e9e',textAlign:'center',lineHeight:1.2}}>{label}</span>
-                        <span style={{fontSize:8,color: active ? '#4CAF50' : '#bdbdbd',textAlign:'center',lineHeight:1.2}}>{sublabel}</span>
+                        <span style={{fontSize:8,color: active ? '#4CAF50' : '#bdbdbd',textAlign:'center',lineHeight:1.2}}>{active ? '✓ added' : sublabel}</span>
                       </button>
                     );
                   })}
                 </div>
-                {/* Config panel — visible once a preset is selected */}
-                {landingAI.taskPreset && (
-                  <div style={{background:'#f9fdf9',border:'1px solid #c8e6c9',borderRadius:14,padding:'12px 14px',marginBottom:8}}>
-                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:8}}>
-                      <Sel label="Deployment"    value={landingAI.deployment}   options={Object.keys(CLOUD)}          onChange={v=>setLandingAI(a=>({...a,deployment:v}))}/>
-                      <Sel label="GPU type"      value={landingAI.gpu}          options={META.gpuModels}               onChange={v=>setLandingAI(a=>({...a,gpu:v}))}/>
+                {/* Per-tool config card for each active tool */}
+                {AI_PRESETS.filter(p=>landingAITools[p.key]).map(({key,label,Icon})=>{
+                  const cfg = landingAITools[key];
+                  const toolKwh = rnd((GPU_PRESETS[cfg.gpu]?.tdpKw??0.3)*(parseInt(cfg.numGpus,10)||1)*(parseFloat(cfg.hoursPerDay)||0)*30*(CLOUD[cfg.deployment]?.pue??1.5),1);
+                  const toolCo2 = rnd(toolKwh*getCI(settings.region,settings.customCi),2);
+                  return (
+                    <div key={key} style={{background:'#f9fdf9',border:'1px solid #c8e6c9',borderRadius:12,padding:'10px 12px',marginBottom:6}}>
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                        <div style={{display:'flex',alignItems:'center',gap:6}}>
+                          <Icon size={13} style={{color:'#2E7D32'}}/>
+                          <span style={{fontSize:12,fontWeight:700,color:'#1b5e20'}}>{label}</span>
+                        </div>
+                        <span style={{fontSize:11,color:'#607d66'}}>~{fmtKwh(toolKwh)}/mo · {fmtCo2(toolCo2)}/mo</span>
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:6}}>
+                        <Sel label="Deployment" value={cfg.deployment} options={Object.keys(CLOUD)} onChange={v=>setLandingAITools(t=>({...t,[key]:{...t[key],deployment:v}}))}/>
+                        <Sel label="GPU type"   value={cfg.gpu}        options={META.gpuModels}     onChange={v=>setLandingAITools(t=>({...t,[key]:{...t[key],gpu:v}}))}/>
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                        <Sel label="No. of GPUs" value={cfg.numGpus}     options={['1','2','4','8']}            onChange={v=>setLandingAITools(t=>({...t,[key]:{...t[key],numGpus:v}}))}/>
+                        <Sel label="Hours / day" value={cfg.hoursPerDay} options={['2','4','6','8','12','16','24']} onChange={v=>setLandingAITools(t=>({...t,[key]:{...t[key],hoursPerDay:v}}))}/>
+                      </div>
                     </div>
-                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
-                      <Sel label="No. of GPUs"   value={landingAI.numGpus}      options={['1','2','4','8']}            onChange={v=>setLandingAI(a=>({...a,numGpus:v}))}/>
-                      <Sel label="Hours / day"   value={landingAI.hoursPerDay}  options={['2','4','6','8','12','16','24']} onChange={v=>setLandingAI(a=>({...a,hoursPerDay:v}))}/>
-                    </div>
-                    <div style={{display:'flex',gap:16,flexWrap:'wrap',paddingTop:8,borderTop:'1px solid #e8f5e9',fontSize:12,color:'#607d66'}}>
-                      <span>~<strong style={{color:'#1b5e20'}}>{fmtKwh(landingAIKwh)}</strong>/mo GPU energy</span>
-                      <span>~<strong style={{color:'#1b5e20'}}>{fmtCo2(landingAICo2)}</strong>/mo CO₂e</span>
-                      <span style={{color:'#90a4ae'}}>PUE {CLOUD[landingAI.deployment]?.pue ?? 1.5} · {settings.region}</span>
-                    </div>
+                  );
+                })}
+                {/* Total summary shown when more than one tool is active */}
+                {Object.keys(landingAITools).length > 1 && (
+                  <div style={{display:'flex',gap:16,flexWrap:'wrap',padding:'8px 12px',background:'#e8f5e9',borderRadius:10,marginBottom:6,fontSize:12,fontWeight:700,color:'#1b5e20'}}>
+                    <span>{Object.keys(landingAITools).length} tools total</span>
+                    <span>~{fmtKwh(landingAIKwh)}/mo GPU energy</span>
+                    <span>~{fmtCo2(landingAICo2)}/mo CO₂e</span>
                   </div>
                 )}
-                <button onClick={()=>{setLandingAIOpen(false);setLandingAI(a=>({...a,taskPreset:''}));}} style={{background:'none',border:'none',color:'#607d66',cursor:'pointer',fontSize:13,padding:0}}>✕ Remove AI</button>
+                <button onClick={()=>{setLandingAIOpen(false);setLandingAITools({});}} style={{background:'none',border:'none',color:'#607d66',cursor:'pointer',fontSize:13,padding:0}}>✕ Remove all AI</button>
               </div>
             )}
           </div>
@@ -1578,7 +1600,7 @@ function App() {
             <div style={{fontSize:56,fontWeight:900,color:'#1b5e20',lineHeight:1}}>{fmtCo2(dash.scopes.scope2Kg + landingAICo2)}</div>
             <div style={{color:'#2E7D32',fontWeight:700,fontSize:16,marginTop:4,marginBottom: landingAIOpen && landingAICo2>0 ? 8 : 20}}>CO₂ · {settings.timePeriod.toLowerCase()}</div>
             {landingAIOpen && landingAICo2>0 && (
-              <div style={{fontSize:13,color:'#607d66',marginBottom:16}}>↑ includes {fmtCo2(landingAICo2)} from AI tools</div>
+              <div style={{fontSize:13,color:'#607d66',marginBottom:16}}>↑ includes {fmtCo2(landingAICo2)} from {Object.keys(landingAITools).length} AI tool{Object.keys(landingAITools).length>1?'s':''}</div>
             )}
             <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:24}}>
               {[
@@ -1615,7 +1637,7 @@ function App() {
             <div className="aiSummary">
               <span>Total energy <b>{fmtKwh(dash.totals.kwh + landingAIKwh)}{dash.totals.label}</b></span>
               <span>Scope 2 CO₂ <b>{fmtCo2(dash.scopes.scope2Kg + landingAICo2)}</b></span>
-              {landingAIOpen && landingAI.taskPreset && <span>AI tools <b>{fmtCo2(landingAICo2)}</b></span>}
+              {landingAIOpen && Object.keys(landingAITools).length>0 && <span>AI tools ({Object.keys(landingAITools).length}) <b>{fmtCo2(landingAICo2)}</b></span>}
               <span>Avoidable idle <b>{fmtKwh(dash.totals.idleWasteKwh)}</b></span>
             </div>
             <div className="aiTabs">
@@ -1755,7 +1777,7 @@ function App() {
               <Card icon={<TrendingDown/>} title={`Idle + standby ${dash.totals.label}`}     value={fmtKwh(dash.totals.idleKwh)}              sub={`${dash.totals.idlePct}% of total — between scans and overnight. Primary optimisation target.`}/>
               <Card icon={<TrendingDown/>} title={`Avoidable idle ${dash.totals.label}`}     value={fmtKwh(dash.totals.idleWasteKwh)}         sub="Recoverable by standby / power-off policies."/>
               <Card icon={<Activity/>}     title="Energy per imaging scan"                   value={`${dash.totals.energyPerScan} kWh`}       sub="Total ÷ all scans. Use for modality benchmarking and protocol optimisation."/>
-              {landingAIOpen && landingAI.taskPreset && <Card icon={<Cpu/>} title={`AI tools estimate ${dash.totals.label}`} value={fmtKwh(landingAIKwh)} sub={`${landingAI.numGpus}× ${landingAI.gpu} · ${landingAI.hoursPerDay} h/day · ${landingAI.deployment} (PUE ${CLOUD[landingAI.deployment]?.pue ?? 1.5}). For full analysis use AI Dashboard.`}/>}
+              {landingAIOpen && Object.keys(landingAITools).length>0 && <Card icon={<Cpu/>} title={`AI tools estimate ${dash.totals.label}`} value={fmtKwh(landingAIKwh)} sub={`${Object.keys(landingAITools).length} tool(s): ${Object.keys(landingAITools).map(k=>AI_PRESETS.find(p=>p.key===k)?.label??k).join(', ')}. For full analysis use AI Dashboard.`}/>}
             </div>
           </section>
 
