@@ -71,7 +71,7 @@ EcoRad stores uncertain literature values as transparent, editable defaults with
 
 | ID | Citation |
 |----|---------|
-| AJR-2024-Angio | DOI: [10.2214/AJR.24.30988](https://doi.org/10.2214/AJR.24.30988). AJR 2024. Energy and carbon footprint of interventional / angiography suites. |
+| AJR-2024-Angio | Vosshenrich J et al. *Interventional Imaging Systems in Radiology, Cardiology, and Urology: Energy Consumption, Carbon Emissions, and Electricity Costs.* AJR 2024; 222:e2430988. DOI: [10.2214/AJR.24.30988](https://doi.org/10.2214/AJR.24.30988). Direct power-sensor measurements (2 Hz, 4-week periods) on 7 systems: IR suite (Artis pheno), INR suite (Artis icono biplane), radiology fluoroscopy unit (Artis zee), EP lab, cath lab, and 2 urology fluoroscopy units. **Primary source for `EQUIPMENT_UNITS` `angio` and `fluoro` entries.** Key measured values: IR suite idle 6.9 kW, active 7.5 kW, off 1.1 kW, 25,525 kWh/yr; fluoroscopy unit idle 2.8 kW, active 3.1 kW, off 0.6 kW, 11,439 kWh/yr. Nonproductive energy 89–99% of total per system. Switching from idle to off overnight + weekends saves 18.6 mtCO₂eq/yr across 7 systems (CH grid 0.128 kgCO₂eq/kWh). Chiller power NOT included in sensor measurements. |
 | Radiol-240398 | See CT section (includes angiography carbon data). |
 
 ---
