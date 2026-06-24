@@ -2438,6 +2438,17 @@ function App() {
                 <div style={{color:'#A5D6A7', fontSize:13, marginTop:4}}>{ecoLabelData.projectName}</div>
                 <div style={{color:'#81C784', fontSize:11, marginTop:2}}>AI/ML Training Report · Radiology · {ecoLabelData.date}</div>
               </div>
+              <div style={{background:ecoLabelData.tierBg, padding:'18px 22px', display:'flex', alignItems:'center', gap:20}}>
+                <div style={{fontSize:64, fontWeight:900, color:ecoLabelData.tierColor, lineHeight:1, flexShrink:0}}>{ecoLabelData.tier}</div>
+                <div>
+                  <div style={{fontWeight:700, fontSize:16, color:ecoLabelData.tierColor}}>Tier {ecoLabelData.tier} — {ecoLabelData.tierLabel}</div>
+                  <div style={{fontSize:13, color:'#263238', marginTop:4}}>
+                    {ecoLabelData.trainCo2 > 0
+                      ? `${ecoLabelData.trainCo2} kgCO₂e total training`
+                      : 'Enter training data above to calculate'}
+                  </div>
+                </div>
+              </div>
               {[
                 ['Task type',                ecoLabelData.taskType],
                 ['Architecture',             ecoLabelData.architecture],
