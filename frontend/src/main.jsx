@@ -100,6 +100,18 @@ const MRI_CARDS = [
   {key:'mri_3t',   label:'MRI 3T',    sublabel:'State-of-the-art',              Icon:Brain, tooltip:MRI_3T_TOOLTIP},
   {key:'mri_7t',   label:'MRI 7T',    sublabel:'Research scanner',              Icon:Brain, tooltip:MRI_7T_TOOLTIP},
 ];
+// AI tool presets — GPU/hours defaults from literature benchmarks.
+// CAD/segmentation: typical clinical deployment GPU (Doo 2024, Kocak 2025).
+// LLM: A100-class cloud GPU for report generation (LLM-Energy PDF, Radiology 2024).
+// Reconstruction: on-site low-latency inference (Radiol 2023, doi:10.1148/radiol.230441).
+const AI_PRESETS = [
+  {key:'cad',   label:'CAD Screening',       Icon:Target,    gpu:'NVIDIA RTX A6000',      hoursPerDay:'6',  numGpus:'1', deployment:'Local compute', sublabel:'Detection / classification'},
+  {key:'llm',   label:'LLM Report Assistant',Icon:Brain,     gpu:'NVIDIA A100 (40GB PCIe)',hoursPerDay:'8',  numGpus:'1', deployment:'AWS',           sublabel:'NLP / report generation'},
+  {key:'recon', label:'Reconstruction AI',   Icon:Cpu,       gpu:'NVIDIA RTX A6000',      hoursPerDay:'12', numGpus:'1', deployment:'Local compute', sublabel:'MR/CT deep learning recon'},
+  {key:'seg',   label:'Segmentation AI',     Icon:BarChart3, gpu:'NVIDIA T4',             hoursPerDay:'4',  numGpus:'1', deployment:'Local compute', sublabel:'Organ / lesion U-Net'},
+  {key:'custom',label:'Custom',              Icon:Plus,      gpu:'NVIDIA A100 (80GB SXM4)',hoursPerDay:'8',  numGpus:'1', deployment:'Local compute', sublabel:'Set all parameters manually'},
+];
+
 const OTHER_CARDS = [
   {key:'ct',          label:'CT',              Icon:Activity, tooltip:CT_TOOLTIP},
   {key:'petct',       label:'PET-CT',          Icon:Cpu,      tooltip:PETCT_TOOLTIP},
@@ -1144,7 +1156,7 @@ function App() {
   const [dashTab, setDashTab] = useState('equiv');
   const [equivScope, setEquivScope] = useState('scope2');
   const [landingAIOpen, setLandingAIOpen] = useState(false);
-  const [landingAI, setLandingAI] = useState({gpu:'NVIDIA A100 (80GB SXM4)', hoursPerDay:'8'});
+  const [landingAI, setLandingAI] = useState({taskPreset:'', gpu:'NVIDIA RTX A6000', hoursPerDay:'8', numGpus:'1', deployment:'Local compute'});
   const [ecoCopied, setEcoCopied] = useState(false);
   const [ecoLabel, setEcoLabel] = useState({
     projectName: '',
@@ -1349,10 +1361,12 @@ function App() {
   const cloudResult = useMemo(() => computeCloudCarbon(cloudTracker), [cloudTracker]);
 
   const landingAIKwh = useMemo(() => {
-    if (!landingAIOpen) return 0;
+    if (!landingAIOpen || !landingAI.taskPreset) return 0;
     const tdpKw = GPU_PRESETS[landingAI.gpu]?.tdpKw ?? 0.3;
     const hours = parseFloat(landingAI.hoursPerDay) || 0;
-    return rnd(tdpKw * hours * 30 * (CLOUD['Local compute']?.pue ?? 1.5), 2);
+    const n     = parseInt(landingAI.numGpus, 10) || 1;
+    const pue   = CLOUD[landingAI.deployment]?.pue ?? 1.5;
+    return rnd(tdpKw * n * hours * 30 * pue, 2);
   }, [landingAIOpen, landingAI]);
   const landingAICo2 = useMemo(() => {
     if (!landingAIOpen) return 0;
@@ -1507,11 +1521,52 @@ function App() {
               </button>
             ) : (
               <div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:8}}>
-                  <Sel label="GPU type"    value={landingAI.gpu}         options={META.gpuModels}                   onChange={v=>setLandingAI(a=>({...a,gpu:v}))}/>
-                  <Sel label="Hours / day" value={landingAI.hoursPerDay} options={['2','4','6','8','12','16','24']} onChange={v=>setLandingAI(a=>({...a,hoursPerDay:v}))}/>
+                <div style={{fontSize:11,fontWeight:700,color:'#90a4ae',letterSpacing:'0.06em',textTransform:'uppercase',marginBottom:8,display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{flex:1,height:1,background:'#e0e0e0',display:'inline-block'}}/>
+                  AI / ML tools
+                  <span style={{flex:1,height:1,background:'#e0e0e0',display:'inline-block'}}/>
                 </div>
-                <button onClick={()=>setLandingAIOpen(false)} style={{background:'none',border:'none',color:'#607d66',cursor:'pointer',fontSize:13,padding:0}}>✕ Remove AI</button>
+                {/* Preset chips */}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:6,marginBottom:10}}>
+                  {AI_PRESETS.map(({key,label,sublabel,Icon})=>{
+                    const active = landingAI.taskPreset === key;
+                    return (
+                      <button key={key} onClick={()=>{
+                        const p = AI_PRESETS.find(x=>x.key===key);
+                        setLandingAI(a=>({...a,taskPreset:key,gpu:p.gpu,hoursPerDay:p.hoursPerDay,numGpus:p.numGpus,deployment:p.deployment}));
+                      }} style={{
+                        display:'flex',flexDirection:'column',alignItems:'center',gap:3,
+                        background: active ? '#e8f5e9' : '#f9f9f9',
+                        border:`2px solid ${active ? '#a5d6a7' : '#e0e0e0'}`,
+                        borderRadius:12,padding:'8px 4px',cursor:'pointer',
+                        transition:'border-color 0.15s,background 0.15s',
+                      }}>
+                        <Icon size={16} style={{color: active ? '#2E7D32' : '#bdbdbd'}}/>
+                        <span style={{fontSize:9,fontWeight:700,color: active ? '#1b5e20' : '#9e9e9e',textAlign:'center',lineHeight:1.2}}>{label}</span>
+                        <span style={{fontSize:8,color: active ? '#4CAF50' : '#bdbdbd',textAlign:'center',lineHeight:1.2}}>{sublabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Config panel — visible once a preset is selected */}
+                {landingAI.taskPreset && (
+                  <div style={{background:'#f9fdf9',border:'1px solid #c8e6c9',borderRadius:14,padding:'12px 14px',marginBottom:8}}>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:8}}>
+                      <Sel label="Deployment"    value={landingAI.deployment}   options={Object.keys(CLOUD)}          onChange={v=>setLandingAI(a=>({...a,deployment:v}))}/>
+                      <Sel label="GPU type"      value={landingAI.gpu}          options={META.gpuModels}               onChange={v=>setLandingAI(a=>({...a,gpu:v}))}/>
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                      <Sel label="No. of GPUs"   value={landingAI.numGpus}      options={['1','2','4','8']}            onChange={v=>setLandingAI(a=>({...a,numGpus:v}))}/>
+                      <Sel label="Hours / day"   value={landingAI.hoursPerDay}  options={['2','4','6','8','12','16','24']} onChange={v=>setLandingAI(a=>({...a,hoursPerDay:v}))}/>
+                    </div>
+                    <div style={{display:'flex',gap:16,flexWrap:'wrap',paddingTop:8,borderTop:'1px solid #e8f5e9',fontSize:12,color:'#607d66'}}>
+                      <span>~<strong style={{color:'#1b5e20'}}>{fmtKwh(landingAIKwh)}</strong>/mo GPU energy</span>
+                      <span>~<strong style={{color:'#1b5e20'}}>{fmtCo2(landingAICo2)}</strong>/mo CO₂e</span>
+                      <span style={{color:'#90a4ae'}}>PUE {CLOUD[landingAI.deployment]?.pue ?? 1.5} · {settings.region}</span>
+                    </div>
+                  </div>
+                )}
+                <button onClick={()=>{setLandingAIOpen(false);setLandingAI(a=>({...a,taskPreset:''}));}} style={{background:'none',border:'none',color:'#607d66',cursor:'pointer',fontSize:13,padding:0}}>✕ Remove AI</button>
               </div>
             )}
           </div>
@@ -1560,7 +1615,7 @@ function App() {
             <div className="aiSummary">
               <span>Total energy <b>{fmtKwh(dash.totals.kwh + landingAIKwh)}{dash.totals.label}</b></span>
               <span>Scope 2 CO₂ <b>{fmtCo2(dash.scopes.scope2Kg + landingAICo2)}</b></span>
-              {landingAIOpen && <span>AI tools <b>{fmtCo2(landingAICo2)}</b></span>}
+              {landingAIOpen && landingAI.taskPreset && <span>AI tools <b>{fmtCo2(landingAICo2)}</b></span>}
               <span>Avoidable idle <b>{fmtKwh(dash.totals.idleWasteKwh)}</b></span>
             </div>
             <div className="aiTabs">
@@ -1700,7 +1755,7 @@ function App() {
               <Card icon={<TrendingDown/>} title={`Idle + standby ${dash.totals.label}`}     value={fmtKwh(dash.totals.idleKwh)}              sub={`${dash.totals.idlePct}% of total — between scans and overnight. Primary optimisation target.`}/>
               <Card icon={<TrendingDown/>} title={`Avoidable idle ${dash.totals.label}`}     value={fmtKwh(dash.totals.idleWasteKwh)}         sub="Recoverable by standby / power-off policies."/>
               <Card icon={<Activity/>}     title="Energy per imaging scan"                   value={`${dash.totals.energyPerScan} kWh`}       sub="Total ÷ all scans. Use for modality benchmarking and protocol optimisation."/>
-              {landingAIOpen && <Card icon={<Cpu/>} title={`AI tools estimate ${dash.totals.label}`} value={fmtKwh(landingAIKwh)} sub={`${landingAI.gpu} · ${landingAI.hoursPerDay} h/day · local PUE 1.5. For detailed analysis use the AI tab.`}/>}
+              {landingAIOpen && landingAI.taskPreset && <Card icon={<Cpu/>} title={`AI tools estimate ${dash.totals.label}`} value={fmtKwh(landingAIKwh)} sub={`${landingAI.numGpus}× ${landingAI.gpu} · ${landingAI.hoursPerDay} h/day · ${landingAI.deployment} (PUE ${CLOUD[landingAI.deployment]?.pue ?? 1.5}). For full analysis use AI Dashboard.`}/>}
             </div>
           </section>
 
