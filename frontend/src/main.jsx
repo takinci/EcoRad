@@ -30,42 +30,55 @@ const CARBON_INTENSITY = {
 const TIME_MULT = {Monthly: 1, Quarterly: 3, Annual: 12};
 const TIME_LABEL = {Monthly: "/mo", Quarterly: "/qtr", Annual: "/yr"};
 
-// Equipment fleets per department profile. Power values from literature (see sources.md).
-// Hours are typical monthly operational patterns per profile type.
-const EQUIPMENT_PROFILES = {
-  "Hospital radiology": [
-    {name:"MRI 3T",               modality:"MRI",         active_kw:30,  idle_kw:15,  standby_kw:5,   off_kw:0.5,  active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:120, scans:1200},
-    {name:"CT Scanner",           modality:"CT",          active_kw:60,  idle_kw:8,   standby_kw:3,   off_kw:0.2,  active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:120, scans:1800},
-    {name:"Digital X-ray Room",   modality:"X-ray",       active_kw:12,  idle_kw:2,   standby_kw:0.6, off_kw:0.1,  active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:120, scans:2500},
-    {name:"Ultrasound Fleet",     modality:"Ultrasound",  active_kw:1.5, idle_kw:0.4, standby_kw:0.1, off_kw:0.02, active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:120, scans:2500},
-    {name:"PACS Storage",         modality:"PACS/RIS",    active_kw:4,   idle_kw:4,   standby_kw:4,   off_kw:4,    active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:120, scans:2500},
-    {name:"Reporting Workstations",modality:"Workstation", active_kw:2,  idle_kw:0.8, standby_kw:0.2, off_kw:0.05, active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:120, scans:2500},
-  ],
-  "Outpatient imaging center": [
-    {name:"MRI 1.5T",             modality:"MRI",         active_kw:22,  idle_kw:12,  standby_kw:4,   off_kw:0.5,  active_h:120, idle_h:260, standby_h:280, off_h:84,  avoidable_idle_h:100, scans:800},
-    {name:"CT Scanner",           modality:"CT",          active_kw:45,  idle_kw:6,   standby_kw:2,   off_kw:0.2,  active_h:100, idle_h:220, standby_h:300, off_h:124, avoidable_idle_h:80,  scans:1000},
-    {name:"Digital X-ray",        modality:"X-ray",       active_kw:10,  idle_kw:1.5, standby_kw:0.5, off_kw:0.1,  active_h:120, idle_h:240, standby_h:280, off_h:104, avoidable_idle_h:80,  scans:1800},
-    {name:"Ultrasound (×3)",      modality:"Ultrasound",  active_kw:4.5, idle_kw:1.2, standby_kw:0.3, off_kw:0.06, active_h:140, idle_h:260, standby_h:260, off_h:84,  avoidable_idle_h:100, scans:3000},
-    {name:"PACS Storage",         modality:"PACS/RIS",    active_kw:2,   idle_kw:2,   standby_kw:2,   off_kw:2,    active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:60,  scans:2500},
-    {name:"Workstations (×4)",    modality:"Workstation", active_kw:0.8, idle_kw:0.3, standby_kw:0.08,off_kw:0.02, active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:100, scans:2500},
-  ],
-  "Research imaging lab": [
-    {name:"MRI 7T Research",      modality:"MRI",         active_kw:45,  idle_kw:22,  standby_kw:8,   off_kw:1,    active_h:120, idle_h:320, standby_h:260, off_h:44,  avoidable_idle_h:150, scans:300},
-    {name:"MRI 3T Clinical",      modality:"MRI",         active_kw:30,  idle_kw:15,  standby_kw:5,   off_kw:0.5,  active_h:100, idle_h:280, standby_h:280, off_h:84,  avoidable_idle_h:130, scans:500},
-    {name:"CT Research Unit",     modality:"CT",          active_kw:55,  idle_kw:7,   standby_kw:3,   off_kw:0.2,  active_h:80,  idle_h:200, standby_h:300, off_h:164, avoidable_idle_h:80,  scans:400},
-    {name:"Ultrasound",           modality:"Ultrasound",  active_kw:1.5, idle_kw:0.4, standby_kw:0.1, off_kw:0.02, active_h:80,  idle_h:200, standby_h:300, off_h:164, avoidable_idle_h:60,  scans:300},
-    {name:"Research PACS",        modality:"PACS/RIS",    active_kw:6,   idle_kw:6,   standby_kw:6,   off_kw:6,    active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:80,  scans:1500},
-    {name:"Analysis Workstations (×8)",modality:"Workstation",active_kw:3.2,idle_kw:1.6,standby_kw:0.4,off_kw:0.08,active_h:200, idle_h:350, standby_h:174, off_h:20,  avoidable_idle_h:80,  scans:2000},
-  ],
-  "Teleradiology / informatics-heavy workflow": [
-    {name:"Remote PACS (primary)",modality:"PACS/RIS",    active_kw:8,   idle_kw:8,   standby_kw:8,   off_kw:8,    active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:60,  scans:5000},
-    {name:"Archive Storage",      modality:"PACS/RIS",    active_kw:3,   idle_kw:3,   standby_kw:3,   off_kw:3,    active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:30,  scans:5000},
-    {name:"AI Inference Servers", modality:"PACS/RIS",    active_kw:5,   idle_kw:5,   standby_kw:5,   off_kw:5,    active_h:160, idle_h:300, standby_h:250, off_h:34,  avoidable_idle_h:60,  scans:5000},
-    {name:"Workstations (×12)",   modality:"Workstation", active_kw:2.4, idle_kw:1.0, standby_kw:0.24,off_kw:0.06, active_h:160, idle_h:280, standby_h:250, off_h:54,  avoidable_idle_h:120, scans:5000},
-  ],
+// Per-unit equipment specs — one row = one machine/set. Power values from literature (see sources.md).
+// Hours are typical monthly operational patterns for clinical radiology equipment.
+// MRI: JMRI-2023 (Heye et al.) 30 kW active 3T mean. CT: Acra-2024, CJRS-2022 40–80 kW range.
+// X-ray/Mammo: AJR-2025-CT. Ultrasound: low draw, EurRad-2024-MRI context. PACS: Radiol-240398.
+const EQUIPMENT_UNITS = {
+  mri:         {name:"MRI Scanner",    modality:"MRI",        active_kw:30,  idle_kw:15,  standby_kw:5,   off_kw:0.5,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:1200},
+  ct:          {name:"CT Scanner",     modality:"CT",         active_kw:60,  idle_kw:8,   standby_kw:3,   off_kw:0.2,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:1800},
+  xray:        {name:"X-ray Room",     modality:"X-ray",      active_kw:12,  idle_kw:2,   standby_kw:0.6, off_kw:0.1,  active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:2500},
+  ultrasound:  {name:"Ultrasound",     modality:"Ultrasound", active_kw:1.5, idle_kw:0.4, standby_kw:0.1, off_kw:0.02, active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:2500},
+  mammography: {name:"Mammography",    modality:"X-ray",      active_kw:5,   idle_kw:1,   standby_kw:0.3, off_kw:0.1,  active_h:100, idle_h:250, standby_h:300, off_h:94, avoidable_idle_h:80,  scans:800},
+  pacs:        {name:"PACS / Servers", modality:"PACS/RIS",   active_kw:4,   idle_kw:4,   standby_kw:4,   off_kw:4,    active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:0},
+  workstations:{name:"Workstations",   modality:"Workstation",active_kw:2,   idle_kw:0.8, standby_kw:0.2, off_kw:0.05, active_h:160, idle_h:300, standby_h:250, off_h:34, avoidable_idle_h:120, scans:0},
 };
-// Backwards-compatible alias used by INTERVENTIONS notes
-const EQUIPMENT_BASE = EQUIPMENT_PROFILES["Hospital radiology"];
+
+const DEFAULT_EQUIPMENT = {mri:1, ct:1, xray:1, ultrasound:1, mammography:0, pacs:1, workstations:4};
+
+// Build a fleet array from equipment counts — scales power by count, hours stay per-unit (not per-fleet)
+function buildFleet(equipment) {
+  return Object.entries(equipment ?? DEFAULT_EQUIPMENT)
+    .filter(([, n]) => n > 0)
+    .map(([key, n]) => {
+      const u = EQUIPMENT_UNITS[key];
+      if (!u) return null;
+      return {
+        ...u,
+        name:        n > 1 ? `${n}× ${u.name}` : u.name,
+        active_kw:   u.active_kw   * n,
+        idle_kw:     u.idle_kw     * n,
+        standby_kw:  u.standby_kw  * n,
+        off_kw:      u.off_kw      * n,
+        scans:       u.scans       * n,
+        // avoidable_idle_h = hours per night — same regardless of unit count
+      };
+    })
+    .filter(Boolean);
+}
+
+// UI card definitions for the equipment picker
+const EQUIP_CARDS = [
+  {key:'mri',         label:'MRI',          Icon:Brain},
+  {key:'ct',          label:'CT',           Icon:Activity},
+  {key:'xray',        label:'X-ray',        Icon:Zap},
+  {key:'ultrasound',  label:'Ultrasound',   Icon:Droplets},
+  {key:'mammography', label:'Mammography',  Icon:Target},
+  {key:'pacs',        label:'PACS/Servers', Icon:Server},
+  {key:'workstations',label:'Workstations', Icon:Monitor},
+];
+
+const EQUIPMENT_BASE = buildFleet(DEFAULT_EQUIPMENT);
 
 // Monthly kWh savings per intervention — conservative departmental estimates.
 // Sources: McKee 2024 (10.1148/radiol.240219), ESR Position Paper 2025, JMRI 2023 (10.1002/jmri.28994),
@@ -321,10 +334,10 @@ const META = {
 // ── Calculation functions ─────────────────────────────────────────────────────
 const rnd = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
 
-function computeDashboard(region, timePeriod, profile = "Hospital radiology", customCi) {
+function computeDashboard(region, timePeriod, equipment = DEFAULT_EQUIPMENT, customCi) {
   const ci       = getCI(region, customCi);
   const mult     = TIME_MULT[timePeriod] ?? 1;
-  const fleet    = EQUIPMENT_PROFILES[profile] ?? EQUIPMENT_BASE;
+  const fleet    = buildFleet(equipment);
 
   const byEquipment = fleet.map(eq => {
     const kwh          = (eq.active_kw*eq.active_h + eq.idle_kw*eq.idle_h + eq.standby_kw*eq.standby_h + eq.off_kw*eq.off_h) * mult;
@@ -350,7 +363,7 @@ function computeDashboard(region, timePeriod, profile = "Hospital radiology", cu
   const totalIdle      = byEquipment.reduce((s, e) => s + e.idleWasteKwh, 0);
   const label          = TIME_LABEL[timePeriod];
 
-  // Patient-generating imaging scans only — use fleet (not EQUIPMENT_BASE) so profile changes propagate
+  // Patient-generating imaging scans only (MRI/CT/X-ray/US) — excludes PACS and Workstation rows
   const imagingScans = fleet
     .filter(e => ["MRI","CT","X-ray","Ultrasound"].includes(e.modality))
     .reduce((s, e) => s + e.scans * mult, 0);
@@ -408,12 +421,12 @@ const CLOUD_INTERVENTIONS = new Set([
   'Use renewable electricity',
 ]);
 
-function computeScenario(intervention, region, timePeriod, profile, customCi, cloudProvider, scannerState) {
+function computeScenario(intervention, region, timePeriod, equipment, customCi, cloudProvider, scannerState) {
   const ci    = getCI(region, customCi);
   const mult  = TIME_MULT[timePeriod] ?? 1;
   const eff   = INTERVENTIONS[intervention] ?? {kwh: 0};
-  const base  = computeDashboard(region, timePeriod, profile, customCi);
-  const fleet = EQUIPMENT_PROFILES[profile] ?? EQUIPMENT_BASE;
+  const base  = computeDashboard(region, timePeriod, equipment, customCi);
+  const fleet = buildFleet(equipment);
   const cf    = CLOUD[cloudProvider] ?? CLOUD["Local compute"];
 
   // Map scanner state label to the equipment power field
@@ -477,7 +490,7 @@ function computeScenario(intervention, region, timePeriod, profile, customCi, cl
   };
 }
 
-function computeAI(cloudProvider, region, modelSize, precision, architecture, customCi, profile) {
+function computeAI(cloudProvider, region, modelSize, precision, architecture, customCi, equipment) {
   const cf    = CLOUD[cloudProvider]          ?? CLOUD["Local compute"];
   const ci    = getCI(region, customCi);
   const model = AI_MODELS[modelSize]           ?? AI_MODELS["Small (< 100M params)"];
@@ -485,8 +498,8 @@ function computeAI(cloudProvider, region, modelSize, precision, architecture, cu
   const ampF  = PRECISION_FACTOR[precision]    ?? 1.0;
   const DEPLOY_MO    = 36;
   const TEST_STUDIES = 500;
-  // Derive scan volume and per-scan energy from the selected profile so both pages are consistent
-  const profileDash  = computeDashboard(region, 'Monthly', profile, customCi);
+  // Derive scan volume and per-scan energy from the user's equipment fleet
+  const profileDash  = computeDashboard(region, 'Monthly', equipment, customCi);
   const STUDIES      = profileDash.scopes.imagingScans;               // imaging scans/month for this profile
   const AVG_SCAN_KWH = profileDash.totals.energyPerScan || 0.5;       // kWh/scan from this profile (fallback 0.5)
 
@@ -1051,7 +1064,7 @@ const getCI = (region, customCi) =>
   region === 'Editable custom' ? (isNaN(parseFloat(customCi)) ? 0.30 : parseFloat(customCi)) : (CARBON_INTENSITY[region] ?? 0.25);
 
 // URL hash state persistence — encodes/decodes core settings so shared links work
-const HASH_KEYS = {p:'profile', u:'intendedUse', r:'region', m:'metricType', t:'timePeriod', c:'customCi'};
+const HASH_KEYS = {u:'intendedUse', r:'region', m:'metricType', t:'timePeriod', c:'customCi'};
 function readHash() {
   try {
     const q = new URLSearchParams(window.location.hash.replace(/^#/,''));
@@ -1072,7 +1085,7 @@ function App() {
 
   // Shared settings — drive all calculations; initialised from URL hash if present
   const [settings, setSettings] = useState(() => ({
-    profile: "Hospital radiology",
+    equipment: DEFAULT_EQUIPMENT,
     intendedUse: "Estimate annual footprint",
     region: "Switzerland",
     metricType: "Energy",
@@ -1080,6 +1093,7 @@ function App() {
     customCi: "0.30",
     ...readHash(),
   }));
+  const setEquip = (key, val) => set('equipment', {...settings.equipment, [key]: val});
   const [scen, setScen] = useState({
     intervention: "Turn MRI/CT scanners off overnight",
     cloudProvider: "Local compute",
@@ -1183,9 +1197,9 @@ function App() {
   }, []);
 
   // Recalculate whenever settings change
-  const dash     = useMemo(() => computeDashboard(settings.region, settings.timePeriod, settings.profile, settings.customCi), [settings.region, settings.timePeriod, settings.profile, settings.customCi]);
-  const scenario = useMemo(() => computeScenario(scen.intervention, settings.region, settings.timePeriod, settings.profile, settings.customCi, scen.cloudProvider, scen.scannerState), [scen.intervention, settings.region, settings.timePeriod, settings.profile, settings.customCi, scen.cloudProvider, scen.scannerState]);
-  const ai       = useMemo(() => computeAI(scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.profile), [scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.profile]);
+  const dash     = useMemo(() => computeDashboard(settings.region, settings.timePeriod, settings.equipment, settings.customCi), [settings.region, settings.timePeriod, settings.equipment, settings.customCi]);
+  const scenario = useMemo(() => computeScenario(scen.intervention, settings.region, settings.timePeriod, settings.equipment, settings.customCi, scen.cloudProvider, scen.scannerState), [scen.intervention, settings.region, settings.timePeriod, settings.equipment, settings.customCi, scen.cloudProvider, scen.scannerState]);
+  const ai       = useMemo(() => computeAI(scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.equipment), [scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.equipment]);
 
   const equivData = useMemo(() => {
     const co2 = equivScope === 'scope2'
@@ -1380,8 +1394,46 @@ function App() {
           <div>
             <p className="eyebrow">Radiology + AI + Planetary Health</p>
             <h1 style={{fontSize:52,lineHeight:1.05,margin:'0 0 20px'}}>How much CO₂ does your department emit?</h1>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:14,marginBottom:16}}>
-              <Sel label="Department type" value={settings.profile}    options={META.profiles}    onChange={v=>set('profile',v)}/>
+            {/* Equipment card grid */}
+            <div style={{marginBottom:16}}>
+              <div style={{fontWeight:700,color:'#2E7D32',fontSize:13,marginBottom:10,letterSpacing:'0.03em',textTransform:'uppercase'}}>Equipment in your department</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:10}}>
+                {EQUIP_CARDS.map(({key, label, Icon}) => {
+                  const count = settings.equipment[key] ?? 0;
+                  return (
+                    <div key={key} style={{
+                      background: count > 0 ? '#e8f5e9' : '#f9f9f9',
+                      border: `2px solid ${count > 0 ? '#a5d6a7' : '#e0e0e0'}`,
+                      borderRadius: 14,
+                      padding: '10px 8px 8px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 4,
+                      transition: 'border-color 0.15s, background 0.15s',
+                    }}>
+                      <Icon size={18} style={{color: count > 0 ? '#2E7D32' : '#bdbdbd', flexShrink:0}}/>
+                      <div style={{fontSize:10,fontWeight:700,color: count > 0 ? '#1b5e20' : '#9e9e9e',textAlign:'center',lineHeight:1.2,letterSpacing:'0.01em'}}>{label}</div>
+                      <select
+                        value={count}
+                        onChange={e => setEquip(key, Number(e.target.value))}
+                        style={{
+                          width:'100%', padding:'3px 2px',
+                          border:`1px solid ${count > 0 ? '#a5d6a7' : '#e0e0e0'}`,
+                          borderRadius:8, fontSize:13, background:'white',
+                          color: count > 0 ? '#1b5e20' : '#9e9e9e',
+                          fontWeight:700, textAlign:'center', cursor:'pointer',
+                        }}
+                      >
+                        {Array.from({length:11},(_,i)=><option key={i} value={i}>{i === 0 ? '— none' : i}</option>)}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {/* Region + time period row */}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:16}}>
               <Sel label="Region / grid"   value={settings.region}     options={META.regions}     onChange={v=>set('region',v)}/>
               <Sel label="Time period"     value={settings.timePeriod} options={META.timePeriods} onChange={v=>set('timePeriod',v)}/>
             </div>
@@ -1413,7 +1465,10 @@ function App() {
             )}
           </div>
           <div className="heroVisual">
-            <div style={{color:'#607d66',fontSize:13,marginBottom:8}}>{settings.profile} · {settings.region} · {settings.timePeriod}</div>
+            <div style={{color:'#607d66',fontSize:12,marginBottom:8,lineHeight:1.5}}>
+              {Object.entries(settings.equipment).filter(([,n])=>n>0).map(([k,n])=>`${n}× ${EQUIPMENT_UNITS[k]?.name??k}`).join(' · ')}
+              {' · '}{settings.region}
+            </div>
             <div style={{fontSize:56,fontWeight:900,color:'#1b5e20',lineHeight:1}}>{fmtCo2(dash.scopes.scope2Kg + landingAICo2)}</div>
             <div style={{color:'#2E7D32',fontWeight:700,fontSize:16,marginTop:4,marginBottom: landingAIOpen && landingAICo2>0 ? 8 : 20}}>CO₂ · {settings.timePeriod.toLowerCase()}</div>
             {landingAIOpen && landingAICo2>0 && (
@@ -1442,7 +1497,7 @@ function App() {
       {page==='dashboard' && (
         <main>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,marginBottom:8}}>
-            <h1 style={{margin:0}}>{settings.profile} <span className="badge">{settings.region}</span> <span className="badge">{settings.timePeriod}</span></h1>
+            <h1 style={{margin:0}}>Radiology Dashboard <span className="badge">{settings.region}</span> <span className="badge">{settings.timePeriod}</span></h1>
             <div style={{display:'flex',gap:8}}>
               <button className="download" onClick={()=>downloadCSV(dash)} style={{padding:'8px 14px',fontSize:13}}><Download/>CSV</button>
               <button className="download" onClick={handlePrint} style={{padding:'8px 14px',fontSize:13}}><Download/>Print / PDF</button>
