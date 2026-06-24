@@ -1562,21 +1562,33 @@ function App() {
                   const toolCo2 = rnd(toolKwh*getCI(settings.region,settings.customCi),2);
                   return (
                     <div key={key} style={{background:'#f9fdf9',border:'1px solid #c8e6c9',borderRadius:12,padding:'10px 12px',marginBottom:6}}>
-                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
                         <div style={{display:'flex',alignItems:'center',gap:6}}>
                           <Icon size={13} style={{color:'#2E7D32'}}/>
                           <span style={{fontSize:12,fontWeight:700,color:'#1b5e20'}}>{label}</span>
                         </div>
                         <span style={{fontSize:11,color:'#607d66'}}>~{fmtKwh(toolKwh)}/mo · {fmtCo2(toolCo2)}/mo</span>
                       </div>
-                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:6}}>
-                        <Sel label="Deployment" value={cfg.deployment} options={Object.keys(CLOUD)} onChange={v=>setLandingAITools(t=>({...t,[key]:{...t[key],deployment:v}}))}/>
-                        <Sel label="GPU type"   value={cfg.gpu}        options={META.gpuModels}     onChange={v=>setLandingAITools(t=>({...t,[key]:{...t[key],gpu:v}}))}/>
-                      </div>
-                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                        <Sel label="No. of GPUs" value={cfg.numGpus}     options={['1','2','4','8']}            onChange={v=>setLandingAITools(t=>({...t,[key]:{...t[key],numGpus:v}}))}/>
-                        <Sel label="Hours / day" value={cfg.hoursPerDay} options={['2','4','6','8','12','16','24']} onChange={v=>setLandingAITools(t=>({...t,[key]:{...t[key],hoursPerDay:v}}))}/>
-                      </div>
+                      {/* Presets: show literature-backed values as read-only chips */}
+                      {key !== 'custom' ? (
+                        <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                          {[cfg.gpu, `${cfg.numGpus} GPU`, `${cfg.hoursPerDay}h/day`, cfg.deployment].map((s,i)=>(
+                            <span key={i} style={{background:'#e8f5e9',borderRadius:8,padding:'2px 8px',fontSize:10,color:'#1b5e20',fontWeight:600}}>{s}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        /* Custom only: full dropdown configuration */
+                        <>
+                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:6}}>
+                            <Sel label="Deployment" value={cfg.deployment} options={Object.keys(CLOUD)} onChange={v=>setLandingAITools(t=>({...t,[key]:{...t[key],deployment:v}}))}/>
+                            <Sel label="GPU type"   value={cfg.gpu}        options={META.gpuModels}     onChange={v=>setLandingAITools(t=>({...t,[key]:{...t[key],gpu:v}}))}/>
+                          </div>
+                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                            <Sel label="No. of GPUs" value={cfg.numGpus}     options={['1','2','4','8']}            onChange={v=>setLandingAITools(t=>({...t,[key]:{...t[key],numGpus:v}}))}/>
+                            <Sel label="Hours / day" value={cfg.hoursPerDay} options={['2','4','6','8','12','16','24']} onChange={v=>setLandingAITools(t=>({...t,[key]:{...t[key],hoursPerDay:v}}))}/>
+                          </div>
+                        </>
+                      )}
                     </div>
                   );
                 })}
