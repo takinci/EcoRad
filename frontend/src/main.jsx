@@ -370,6 +370,9 @@ const PATIENT_KM_RT    = 20;   // avg round-trip patient travel km — replace w
 const CAR_CO2_KG_KM    = 0.17; // kgCO₂e/km average car (DEFRA 2023)
 const PAPER_G_PER_ENC  = 25;   // g paper per encounter in digital workflow (ESR Green Imaging)
 const HAZ_WASTE_G_SCAN = 50;   // g hazardous waste per imaging scan — contrast media disposal estimate
+const NET_KWH_PER_GB   = 0.001; // kWh/GB fixed-line data-centre average (Aslan et al. 2018)
+const STAFF_DAYS_PER_MO = 22;  // standard working days per month
+const AVG_STUDY_GB     = 0.3;  // weighted avg DICOM study: MRI ~1 GB, CT ~0.5 GB, X-ray ~0.05 GB
 
 const META = {
   profiles:       ["Hospital radiology", "Outpatient imaging center", "Research imaging lab", "Teleradiology / informatics-heavy workflow"],
@@ -1147,6 +1150,8 @@ function App() {
     metricType: "Energy",
     timePeriod: "Monthly",
     customCi: "0.30",
+    staffCount: '10',
+    staffCommuteKm: '15',
     ...readHash(),
   }));
   const setEquip = (key, val) => set('equipment', {...settings.equipment, [key]: val});
@@ -1272,10 +1277,31 @@ function App() {
     return rnd(landingAIKwh * getCI(settings.region, settings.customCi), 2);
   }, [landingAIOpen, landingAIKwh, settings.region, settings.customCi]);
 
+  // ── Scope 3 extensions (Doo et al. JACR 2024) ──────────────────────────────
+  const staffCommuteCo2 = useMemo(() => {
+    const mult = TIME_MULT[settings.timePeriod] ?? 1;
+    const n  = Math.max(0, parseInt(settings.staffCount)    || 0);
+    const km = Math.max(0, parseFloat(settings.staffCommuteKm) || 0);
+    return rnd(n * km * 2 * STAFF_DAYS_PER_MO * mult * CAR_CO2_KG_KM, 1);
+  }, [settings.staffCount, settings.staffCommuteKm, settings.timePeriod]);
+
+  const networkTransferCo2 = useMemo(() => {
+    const ci = getCI(settings.region, settings.customCi);
+    return rnd(dash.scopes.imagingScans * AVG_STUDY_GB * NET_KWH_PER_GB * ci, 2);
+  }, [dash.scopes.imagingScans, settings.region, settings.customCi]);
+
+  const sciPerStudy = useMemo(() => {
+    if (!dash.scopes.imagingScans || !dash.totals.energyPerScan) return null;
+    const ci = getCI(settings.region, settings.customCi);
+    const opCo2  = rnd(dash.totals.energyPerScan * ci, 4);
+    const embCo2 = rnd(dash.scopes.scope3EmbKg / dash.scopes.imagingScans, 4);
+    return rnd(opCo2 + embCo2, 4);
+  }, [dash, settings.region, settings.customCi]);
+
   const equivData = useMemo(() => {
     const co2 = equivScope === 'scope2'
       ? dash.scopes.scope2Kg + landingAICo2
-      : dash.scopes.scope1Kg + dash.scopes.scope2Kg + dash.scopes.scope3Kg + landingAICo2;
+      : dash.scopes.scope1Kg + dash.scopes.scope2Kg + dash.scopes.scope3Kg + staffCommuteCo2 + networkTransferCo2 + landingAICo2;
     const kwh = dash.totals.kwh + landingAIKwh;
     return {
       co2, kwh,
@@ -1298,7 +1324,7 @@ function App() {
       barrels_oil:   rnd(co2 / 430, 1),             // crude oil combustion EPA (0.43 tCO₂/barrel)
       tonnes_coal:   rnd(co2 / 2350, 2),            // bituminous coal ~2 350 kgCO₂/tonne (IPCC)
     };
-  }, [dash, equivScope, landingAICo2, landingAIKwh]);
+  }, [dash, equivScope, landingAICo2, landingAIKwh, staffCommuteCo2, networkTransferCo2]);
 
   const ecoLabelData = useMemo(() => {
     const gpuTdpKw = ecoLabel.gpuModel === 'Custom (enter TDP below)'
@@ -1416,20 +1442,23 @@ function App() {
     ],
   };
   // Scope 1/2/3 stacked horizontal bar — shown as % of total so all scopes are visible
-  const scopeTotal = dash.scopes.scope1Kg + dash.scopes.scope2Kg + dash.scopes.scope3Kg;
+  const scopeTotal = dash.scopes.scope1Kg + dash.scopes.scope2Kg + dash.scopes.scope3Kg + staffCommuteCo2 + networkTransferCo2;
   const scopePct   = v => scopeTotal > 0 ? rnd(v / scopeTotal * 100, 1) : 0;
+  const scopeVals  = [dash.scopes.scope1Kg, dash.scopes.scope2Kg, dash.scopes.scope3EmbKg, dash.scopes.scope3TravelKg, staffCommuteCo2, networkTransferCo2];
   const chartScopes = {
     labels: ['% of total emissions' + dash.totals.label],
     datasets: [
-      {label:`Scope 1 — Direct (${scopePct(dash.scopes.scope1Kg)}%)`,           data:[scopePct(dash.scopes.scope1Kg)],    backgroundColor:'#81C784'},
-      {label:`Scope 2 — Electricity (${scopePct(dash.scopes.scope2Kg)}%)`,       data:[scopePct(dash.scopes.scope2Kg)],    backgroundColor:'#2E7D32'},
-      {label:`Scope 3 — Embodied (${scopePct(dash.scopes.scope3EmbKg)}%)`,       data:[scopePct(dash.scopes.scope3EmbKg)], backgroundColor:'#4DB6AC'},
+      {label:`Scope 1 — Direct (${scopePct(dash.scopes.scope1Kg)}%)`,              data:[scopePct(dash.scopes.scope1Kg)],       backgroundColor:'#81C784'},
+      {label:`Scope 2 — Electricity (${scopePct(dash.scopes.scope2Kg)}%)`,          data:[scopePct(dash.scopes.scope2Kg)],       backgroundColor:'#2E7D32'},
+      {label:`Scope 3 — Embodied (${scopePct(dash.scopes.scope3EmbKg)}%)`,          data:[scopePct(dash.scopes.scope3EmbKg)],    backgroundColor:'#4DB6AC'},
       {label:`Scope 3 — Patient travel (${scopePct(dash.scopes.scope3TravelKg)}%)`, data:[scopePct(dash.scopes.scope3TravelKg)], backgroundColor:'#A5D6A7'},
+      {label:`Scope 3 — Staff commute (${scopePct(staffCommuteCo2)}%)`,             data:[scopePct(staffCommuteCo2)],            backgroundColor:'#FFB74D'},
+      {label:`Scope 3 — Data transfer (${scopePct(networkTransferCo2)}%)`,          data:[scopePct(networkTransferCo2)],         backgroundColor:'#90A4AE'},
     ],
   };
   const scopeBarOpts = {
     indexAxis:'y',
-    plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label: ctx => ` ${ctx.dataset.label}: ${fmtCo2(dash.scopes[['scope1Kg','scope2Kg','scope3EmbKg','scope3TravelKg'][ctx.datasetIndex]])}`}}},
+    plugins:{legend:{position:'bottom'}, tooltip:{callbacks:{label: ctx => ` ${ctx.dataset.label}: ${fmtCo2(scopeVals[ctx.datasetIndex])}`}}},
     scales:{x:{stacked:true, max:100, ticks:{callback: v => v+'%'}}, y:{stacked:true}},
     responsive:true,
   };
@@ -1526,6 +1555,18 @@ function App() {
                 <p className="note" style={{marginTop:6,fontSize:12}}>Enter your local utility or national grid factor. Global avg: 0.473 · EU avg: 0.237 (Vosshenrich et al.)</p>
               </div>
             )}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:8}}>
+              <label style={{fontWeight:700,color:'#2E7D32',display:'flex',flexDirection:'column',gap:8,fontSize:14}}>
+                Staff commuting (# people)
+                <input type="number" min="0" value={settings.staffCount} onChange={e=>set('staffCount',e.target.value)} placeholder="e.g. 10"/>
+              </label>
+              <label style={{fontWeight:700,color:'#2E7D32',display:'flex',flexDirection:'column',gap:8,fontSize:14}}>
+                Avg one-way commute (km)
+                <input type="number" min="0" value={settings.staffCommuteKm} onChange={e=>set('staffCommuteKm',e.target.value)} placeholder="e.g. 15"/>
+              </label>
+            </div>
+            <p className="note" style={{marginBottom:16,fontSize:12}}>Scope 3 staff commute — DEFRA 2023 car emission factor. Doo et al. JACR 2024.</p>
+
             {!landingAIOpen ? (
               <button onClick={()=>setLandingAIOpen(true)} style={{background:'none',border:'1.5px dashed #81C784',color:'#2E7D32',borderRadius:14,padding:'8px 18px',cursor:'pointer',fontSize:14,fontWeight:600}}>
                 + Add AI / ML tools
@@ -1802,18 +1843,21 @@ function App() {
               <Card icon={<TrendingDown/>} title={`Avoidable idle ${dash.totals.label}`}     value={fmtKwh(dash.totals.idleWasteKwh)}         sub="Recoverable by standby / power-off policies."/>
               <Card icon={<Activity/>}     title="Energy per imaging scan"                   value={`${dash.totals.energyPerScan} kWh`}       sub="Total ÷ all scans. Use for modality benchmarking and protocol optimisation."/>
               {landingAIOpen && Object.keys(landingAITools).length>0 && <Card icon={<Cpu/>} title={`AI tools estimate ${dash.totals.label}`} value={fmtKwh(landingAIKwh)} sub={`${Object.keys(landingAITools).length} tool(s): ${Object.keys(landingAITools).map(k=>AI_PRESETS.find(p=>p.key===k)?.label??k).join(', ')}. For full analysis use AI Dashboard.`}/>}
+              {sciPerStudy !== null && <Card icon={<Target/>} title="SCI — carbon per imaging study" value={`${sciPerStudy} kgCO₂e`} sub={`Software Carbon Intensity (Green Software Foundation): operational CO₂ (${dash.totals.energyPerScan} kWh × ${dash.ci} CI) + embodied carbon per study. Lower is better. (Doo et al. JACR 2024)`} style={{gridColumn:'span 4'}}/>}
             </div>
           </section>
 
           {/* ── 2. Carbon emissions ── */}
           <section id="dash-carbon" className="aiSection" style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
             <h2 style={{marginBottom:12}}>2. Carbon emissions — GHG Protocol scopes</h2>
-            <p className="note" style={{marginBottom:12}}>Scope 1: direct fuel (estimated). Scope 2: purchased electricity (calculated). Scope 3: hardware embodied carbon + patient travel (estimated). All {dash.totals.label}.</p>
+            <p className="note" style={{marginBottom:12}}>Scope 1: direct fuel (estimated). Scope 2: purchased electricity. Scope 3: embodied carbon + patient travel + staff commute + DICOM data transfer (all estimated). All {dash.totals.label}. Framework: Doo et al. JACR 2024.</p>
             <div className="cards">
               <Card icon={<Factory/>}    title="Scope 1 — Direct"          value={fmtCo2(dash.scopes.scope1Kg)}       sub="Backup generators, medical gas. Estimated 8% of Scope 2 (McKee 2024)."/>
               <Card icon={<Gauge/>}      title="Scope 2 — Electricity"     value={fmtCo2(dash.scopes.scope2Kg + landingAICo2)}  sub={`Grid at ${dash.ci} kgCO₂e/kWh (${settings.region}).${landingAICo2>0?` Includes ${fmtCo2(landingAICo2)} from AI tools.`:' Primary measured scope.'}`}/>
               <Card icon={<Cpu/>}        title="Scope 3 — Embodied carbon" value={fmtCo2(dash.scopes.scope3EmbKg)}    sub="Hardware manufacturing amortised over lifespan. Extend lifetime to reduce."/>
               <Card icon={<Car/>}        title="Scope 3 — Patient travel"  value={fmtCo2(dash.scopes.scope3TravelKg)} sub={`${dash.scopes.imagingScans.toLocaleString()} scans × ${PATIENT_KM_RT} km avg round trip.`}/>
+              <Card icon={<Car/>}        title="Scope 3 — Staff commute"   value={fmtCo2(staffCommuteCo2)}            sub={`${settings.staffCount} staff × ${settings.staffCommuteKm} km one-way × ${STAFF_DAYS_PER_MO} days/mo. Edit on Home page. DEFRA 2023.`}/>
+              <Card icon={<Wifi/>}       title="Scope 3 — Data transfer"   value={fmtCo2(networkTransferCo2)}         sub={`${dash.scopes.imagingScans.toLocaleString()} studies × ${AVG_STUDY_GB} GB avg × 0.001 kWh/GB. DICOM network energy (Aslan et al. 2018).`}/>
             </div>
             <section style={{marginTop:16}}>
               <h2>Scope 1 / 2 / 3 breakdown</h2>
@@ -1835,7 +1879,7 @@ function App() {
               <Card icon={<Cpu/>}          title="Top idle waster"    value={dash.topOpportunities[0]?.equipment ?? '—'}          sub={`${fmtKwh(dash.topOpportunities[0]?.idleWasteKwh ?? 0)} avoidable idle${dash.totals.label}. Highest single-unit saving.`}/>
               <Card icon={<Activity/>}     title="Hardware lifespans" value="MRI 15 yr / CT 12 yr"                                sub="X-ray 10 yr, Ultrasound 7 yr. Extend to reduce Scope 3 embodied carbon."/>
               <Card icon={<TrendingDown/>} title="Carbon intensity"   value={`${dash.ci} kgCO₂e/kWh`}                            sub={`${settings.region} grid. Move to renewable tariff or lower-carbon region to cut Scope 2.`}/>
-              <Card icon={<Gauge/>}        title="Scope 3 total"      value={fmtCo2(dash.scopes.scope3Kg)}                       sub="Embodied + patient travel combined. Often larger than Scope 2 in a full lifecycle view."/>
+              <Card icon={<Gauge/>}        title="Scope 3 total"      value={fmtCo2(dash.scopes.scope3Kg + staffCommuteCo2 + networkTransferCo2)} sub="Embodied + patient travel + staff commute + DICOM data transfer. Often larger than Scope 2 in a full lifecycle view."/>
             </div>
             <section style={{marginTop:12}}>
               <h2>Top 5 improvement opportunities — idle energy</h2>
