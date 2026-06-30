@@ -1224,7 +1224,7 @@ function App() {
     modelKey: 'cad',
     architecture: "CNN / ResNet",
     precision: "float32 (standard)",
-    paramsM: '8', dim: '2D', resolution: '224', slices: '1', inferSec: '0.4',
+    paramsM: '8', dim: '2D', resolution: '224', slices: '1', inferSec: '',
     accuracyPct: '84', accuracyMetric: 'AUC',
     scanTimeReductPct: '0', lowValueReductPct: '12',
     trainGpu: '',
@@ -1241,7 +1241,7 @@ function App() {
     const m = AI_MODEL_BY_KEY[key] ?? AI_MODEL_LIBRARY[0];
     setScen(s => ({
       ...s, modelKey: key, architecture: m.architecture,
-      paramsM: String(m.paramsM), dim: m.dim, resolution: String(m.resolution), slices: String(m.slices), inferSec: String(m.inferSec),
+      paramsM: String(m.paramsM), dim: m.dim, resolution: String(m.resolution), slices: String(m.slices), inferSec: '',
       accuracyPct: String(m.accuracyPct), accuracyMetric: m.accuracyMetric,
       scanTimeReductPct: String(m.scanTimeReductPct), lowValueReductPct: String(m.lowValueReductPct),
     }));
@@ -1355,19 +1355,30 @@ function App() {
     // Build the effective model spec: library defaults for non-edited fields (gpuKw,
     // trainMwh, embCo2Kg) + the user's editable values for everything else.
     const lib = AI_MODEL_BY_KEY[scen.modelKey] ?? AI_MODEL_LIBRARY[0];
+    const paramsM    = parseFloat(scen.paramsM)    || lib.paramsM;
+    const dim        = scen.dim || lib.dim;
+    const resolution = parseFloat(scen.resolution) || lib.resolution;
+    const slices     = dim === '3D' ? (parseFloat(scen.slices) || lib.slices) : 1;
+    // Physical inference-time scaling relative to the library entry's measured base:
+    // FLOPs/forward-pass ≈ params × input-elements (resolution² × slices). Relative,
+    // not absolute — anchored to a real measured datapoint, so no false precision.
+    const baseSlices = lib.dim === '3D' ? lib.slices : 1;
+    const basePixels = lib.resolution * lib.resolution * baseSlices;
+    const pixels     = resolution * resolution * slices;
+    const inferSecDerived = rnd(lib.inferSec * (paramsM / lib.paramsM) * (pixels / basePixels), 3);
+    const inferSecManual  = parseFloat(scen.inferSec) > 0 ? parseFloat(scen.inferSec) : null;
+    const inferSecAuto    = inferSecManual === null;
     const model = {
       gpuKw: lib.gpuKw, trainMwh: lib.trainMwh, embCo2Kg: lib.embCo2Kg,
-      paramsM:    parseFloat(scen.paramsM)    || lib.paramsM,
-      dim:        scen.dim || lib.dim,
-      resolution: parseFloat(scen.resolution) || lib.resolution,
-      slices:     parseFloat(scen.slices)     || lib.slices,
-      inferSec:   parseFloat(scen.inferSec)   || lib.inferSec,
+      paramsM, dim, resolution, slices,
+      inferSec:   inferSecManual ?? inferSecDerived,
       accuracy:   Math.min(1, Math.max(0, (parseFloat(scen.accuracyPct) || 0) / 100)),
       accuracyMetric: scen.accuracyMetric || lib.accuracyMetric,
       scanTimeReductPct: Math.max(0, parseFloat(scen.scanTimeReductPct) || 0),
       lowValueReductPct: Math.max(0, parseFloat(scen.lowValueReductPct) || 0),
     };
-    return computeAI(scen.cloudProvider, settings.region, model, scen.precision, scen.architecture, settings.customCi, settings.equipment, {trainKwh, testStudies: scen.testStudies, deployMonths: scen.deployMonths, cloudRegion: scen.cloudRegion});
+    const result = computeAI(scen.cloudProvider, settings.region, model, scen.precision, scen.architecture, settings.customCi, settings.equipment, {trainKwh, testStudies: scen.testStudies, deployMonths: scen.deployMonths, cloudRegion: scen.cloudRegion});
+    return {...result, inferSecDerived, inferSecAuto};
   }, [scen, settings.region, settings.customCi, settings.equipment]);
 
   const landingAIKwh = useMemo(() => {
@@ -2084,7 +2095,7 @@ function App() {
             <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid #eef7ee'}}>
               <button onClick={()=>setModelExpanded(v=>!v)} style={{background:'none',border:'none',padding:0,cursor:'pointer',display:'flex',alignItems:'center',gap:6,width:'100%'}}>
                 <span style={{fontSize:11,fontWeight:700,color:'#607d66'}}>Advanced model parameters</span>
-                <span style={{fontSize:10,color:'#90a4ae'}}>{scen.paramsM}M params · {scen.resolution}px{scen.dim==='3D'?` × ${scen.slices} slices`:''} · {scen.inferSec}s/study</span>
+                <span style={{fontSize:10,color:'#90a4ae'}}>{scen.paramsM}M params · {scen.resolution}px{scen.dim==='3D'?` × ${scen.slices} slices`:''} · {ai.inferSec}s/study{ai.inferSecAuto?' (auto)':' (manual)'}</span>
                 <span style={{fontSize:11,color:'#90a4ae',marginLeft:'auto'}}>{modelExpanded ? '▴ collapse' : '▾ expand'}</span>
               </button>
               {modelExpanded && (
@@ -2119,10 +2130,12 @@ function App() {
                     </label>
                     <label style={{display:'flex',flexDirection:'column',gap:3,fontWeight:700,color:'#2E7D32',fontSize:11}}>
                       Inference time (s/study)
-                      <input type="number" min="0" step="0.1" value={scen.inferSec} onChange={e=>setS('inferSec',e.target.value)} style={{padding:'5px 8px',border:'1px solid #c8e6c9',borderRadius:8,fontSize:11,background:'white'}}/>
+                      <input type="number" min="0" step="0.1" value={scen.inferSec} onChange={e=>setS('inferSec',e.target.value)} placeholder={`auto: ${ai.inferSecDerived}`} style={{padding:'5px 8px',border:'1px solid #c8e6c9',borderRadius:8,fontSize:11,background:'white'}}/>
                     </label>
                   </div>
-                  <p className="note" style={{fontSize:10,marginTop:4,marginBottom:0}}>Inference time/study is the inference energy driver. Params, dimensionality, and resolution describe the model and set the size label.</p>
+                  <p className="note" style={{fontSize:10,marginTop:4,marginBottom:0}}>
+                    Inference time auto-scales with <strong>params × resolution²{scen.dim==='3D'?' × slices':''}</strong> relative to {AI_MODEL_BY_KEY[scen.modelKey]?.reference ?? 'the reference'} (≈ {ai.inferSecDerived}s/study{ai.inferSecAuto?', in use':''}). Enter a measured value to override.
+                  </p>
                 </div>
               )}
             </div>
