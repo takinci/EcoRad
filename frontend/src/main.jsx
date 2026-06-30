@@ -1063,11 +1063,32 @@ function cedarsScore(value, lo, hi) {
 const CEDARS_AI_LO = 1,   CEDARS_AI_HI = 20000;   // total training kgCO₂e: ~1 kg → 100, 20 t → 0
 const CEDARS_DEPT_LO = 0.1, CEDARS_DEPT_HI = 20;  // kgCO₂e per imaging study: 0.1 → 100, 20 → 0
 
+// Net annual CO₂ a deployed AI tool adds to a department: amortised training + inference +
+// embodied GPU, minus clinical savings (shorter protocols + avoided low-value scans). Net,
+// so a tool can be net-negative (reduce department footprint).
+function aiToolDeptContribution(t, annualStudies, facilityKwhPerStudy, effectiveCi) {
+  const share     = Math.min(100, Math.max(0, parseFloat(t.studiesShare) || 100)) / 100;
+  const studiesAI = annualStudies * share;
+  const inferKwhPerStudy = Math.max(0, parseFloat(t.inferKwhPerStudy) || 0);
+  const trainKwhTotal    = Math.max(0, parseFloat(t.trainKwhTotal)    || 0);
+  const embCo2Kg         = Math.max(0, parseFloat(t.embCo2Kg)         || 0);
+  const deployMo  = Math.max(1, parseInt(t.deployMonths) || 36);
+  const scanRed   = Math.max(0, parseFloat(t.scanTimeReductPct) || 0) / 100;
+  const lowVal    = Math.max(0, parseFloat(t.lowValueReductPct) || 0) / 100;
+  const kwhYr     = studiesAI * inferKwhPerStudy + trainKwhTotal / deployMo * 12;
+  const embCo2Yr  = embCo2Kg / deployMo * 12;
+  const grossCo2Yr  = rnd(kwhYr * effectiveCi + embCo2Yr, 1);
+  const energySavedYr = studiesAI * facilityKwhPerStudy * scanRed + studiesAI * lowVal * facilityKwhPerStudy;
+  const savingsCo2Yr  = rnd(energySavedYr * effectiveCi, 1);
+  return {studiesAI: Math.round(studiesAI), kwhYr: rnd(kwhYr, 0), grossCo2Yr, savingsCo2Yr, netCo2Yr: rnd(grossCo2Yr - savingsCo2Yr, 1)};
+}
+
 function generateDeptText(d) {
   if (!d.annualStudies) return '';
   return (
     `Environmental footprint. ${d.deptName}${d.hospitalName ? ` (${d.hospitalName})` : ''} consumed an estimated ${d.annualKwh.toLocaleString()} kWh of electricity in the reporting period, generating approximately ${d.totalAnnualCo2.toLocaleString()} kgCO₂e (effective carbon intensity: ${d.effectiveCi} kgCO₂e/kWh; renewable energy: ${d.renewablePct}%; grid region: ${d.region}). ` +
-    `Across ${d.annualStudies.toLocaleString()} imaging studies, the carbon intensity per study was ${d.co2PerStudy} kgCO₂e/study (${d.kwhPerStudy} kWh/study), corresponding to a CEDARS Score of ${d.score}/100 (CEDARS Rating: ${d.leaves}/5 leaves — ${d.ratingLabel}).` +
+    (d.aiToolCount > 0 ? ` This figure includes ${d.aiToolCount} deployed AI tool${d.aiToolCount > 1 ? 's' : ''}, contributing a net ${d.aiNetCo2Yr >= 0 ? '+' : ''}${d.aiNetCo2Yr.toLocaleString()} kgCO₂e/yr (gross ${d.aiGrossCo2Yr.toLocaleString()} kgCO₂e/yr from compute, offset by ${d.aiSavingsCo2Yr.toLocaleString()} kgCO₂e/yr of clinical savings).` : '') +
+    ` Across ${d.annualStudies.toLocaleString()} imaging studies, the carbon intensity per study was ${d.co2PerStudy} kgCO₂e/study (${d.kwhPerStudy} kWh/study), corresponding to a CEDARS Score of ${d.score}/100 (CEDARS Rating: ${d.leaves}/5 leaves — ${d.ratingLabel}).` +
     (d.interventionCount > 0 ? ` The department has implemented ${d.interventionCount} sustainability intervention${d.interventionCount > 1 ? 's' : ''}, with an estimated energy saving potential of ${d.annualKwhSaving.toLocaleString()} kWh/yr (${d.co2Saving} kgCO₂e/yr).` : '') +
     ` Sustainability metrics were estimated using CEDARS (${d.date}), informed by the framework of Vosshenrich R et al. (Curr Opin Urol 2024, DOI: 10.1097/MOU.0000000000001337) and McKee BJ et al. (Radiology 2024, DOI: 10.1148/radiol.240219).`
   );
@@ -1078,6 +1099,7 @@ function downloadDeptPNG(d) {
   const rows = [
     ['Annual electricity',   `${d.annualKwh.toLocaleString()} kWh`],
     ['Annual CO₂e',    `${d.totalAnnualCo2.toLocaleString()} kgCO₂e`],
+    ...(d.aiToolCount > 0 ? [['Deployed AI tools', `${d.aiToolCount} \xb7 net ${d.aiNetCo2Yr>=0?'+':''}${d.aiNetCo2Yr.toLocaleString()} kgCO₂e/yr`]] : []),
     ['Studies / year',       d.annualStudies.toLocaleString()],
     ['Energy per study',     `${d.kwhPerStudy} kWh`],
     ['Carbon intensity',     `${d.effectiveCi} kgCO₂e/kWh (${d.renewablePct}% renewable)`],
@@ -1377,7 +1399,7 @@ function App() {
   const [deptLabel, setDeptLabel] = useState({
     deptName: '', hospitalName: '', region: 'EU average',
     annualKwh: '', annualStudies: '', renewablePct: '0',
-    activeInterventions: [],
+    activeInterventions: [], aiTools: [],
   });
   const setDept = (key, val) => setDeptLabel(d => ({...d, [key]: val}));
   const toggleIntervention = name => setDeptLabel(d => ({
@@ -1386,6 +1408,10 @@ function App() {
       ? d.activeInterventions.filter(x => x !== name)
       : [...d.activeInterventions, name],
   }));
+  // Deployed AI tools attached to the department — each contributes net annual CO₂.
+  const addDeptAiTool    = tool      => setDeptLabel(d => d.aiTools.length >= 5 ? d : ({...d, aiTools: [...d.aiTools, tool]}));
+  const removeDeptAiTool = id        => setDeptLabel(d => ({...d, aiTools: d.aiTools.filter(t => t.id !== id)}));
+  const updateDeptAiTool = (id,f,v)  => setDeptLabel(d => ({...d, aiTools: d.aiTools.map(t => t.id === id ? {...t, [f]: v} : t)}));
 
   // Provider + region now live in `scen` (shared with AI lifecycle). This holds only the
   // extra Infrastructure-tab workloads layered on top of the auto-seeded AI training/inference.
@@ -1586,10 +1612,19 @@ function App() {
     const effectiveCi = rnd(ci * (1 - renewablePct / 100), 4);
     const annualKwh = parseFloat(deptLabel.annualKwh) || 0;
     const annualStudies = parseFloat(deptLabel.annualStudies) || 0;
-    const totalAnnualCo2 = rnd(annualKwh * effectiveCi, 1);
-    const co2PerStudy = annualStudies > 0 ? rnd(totalAnnualCo2 / annualStudies, 3) : 0;
+    const facilityCo2 = rnd(annualKwh * effectiveCi, 1);
     const kwhPerStudy = annualStudies > 0 ? rnd(annualKwh / annualStudies, 2) : 0;
     const hasData = annualStudies > 0;
+    // Deployed AI tools — each adds net annual CO₂ (compute − clinical savings).
+    const aiToolResults = (deptLabel.aiTools || []).map(t => ({
+      ...t, ...aiToolDeptContribution(t, annualStudies, kwhPerStudy, effectiveCi),
+    }));
+    const aiNetCo2Yr     = rnd(aiToolResults.reduce((s, r) => s + r.netCo2Yr, 0), 1);
+    const aiKwhYr        = rnd(aiToolResults.reduce((s, r) => s + r.kwhYr, 0), 0);
+    const aiGrossCo2Yr   = rnd(aiToolResults.reduce((s, r) => s + r.grossCo2Yr, 0), 1);
+    const aiSavingsCo2Yr = rnd(aiToolResults.reduce((s, r) => s + r.savingsCo2Yr, 0), 1);
+    const totalAnnualCo2 = rnd(Math.max(0, facilityCo2 + aiNetCo2Yr), 1);
+    const co2PerStudy = annualStudies > 0 ? rnd(totalAnnualCo2 / annualStudies, 3) : 0;
     const score = hasData ? cedarsScore(co2PerStudy, CEDARS_DEPT_LO, CEDARS_DEPT_HI) : null;
     const rating = hasData ? cedarsRating(score) : null;
     const monthlyKwhSaving = deptLabel.activeInterventions.reduce(
@@ -1597,8 +1632,9 @@ function App() {
     );
     const annualKwhSaving = monthlyKwhSaving * 12;
     const co2Saving = rnd(annualKwhSaving * effectiveCi, 1);
+    const potentialFacilityCo2 = Math.max(0, annualKwh - annualKwhSaving) * effectiveCi;
     const potentialCo2PerStudy = annualStudies > 0
-      ? rnd(Math.max(0, annualKwh - annualKwhSaving) * effectiveCi / annualStudies, 3) : 0;
+      ? rnd(Math.max(0, potentialFacilityCo2 + aiNetCo2Yr) / annualStudies, 3) : 0;
     const potentialScore = hasData ? cedarsScore(potentialCo2PerStudy, CEDARS_DEPT_LO, CEDARS_DEPT_HI) : null;
     const potentialRating = potentialScore != null ? cedarsRating(potentialScore) : rating;
     return {
@@ -1613,6 +1649,8 @@ function App() {
       monthlyKwhSaving, annualKwhSaving, co2Saving,
       potentialCo2PerStudy, potentialScore, potentialLeaves: potentialRating?.leaves ?? 0, potentialRatingLabel: potentialRating?.label ?? '',
       interventionCount: deptLabel.activeInterventions.length,
+      facilityCo2, aiToolResults, aiToolCount: aiToolResults.length,
+      aiNetCo2Yr, aiKwhYr, aiGrossCo2Yr, aiSavingsCo2Yr,
       date: new Date().toISOString().slice(0, 7),
     };
   }, [deptLabel, settings.customCi]);
@@ -2769,16 +2807,18 @@ function App() {
       {page==='ecolabel' && (
         <main>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,marginBottom:16}}>
-            <h1 style={{margin:0}}>EcoLabel generator</h1>
+            <h1 style={{margin:0}}>CEDARS EcoLabel</h1>
             <div className="aiTabs">
-              <button className={ecoLabelTab==='ai'?'on':''} onClick={()=>setEcoLabelTab('ai')}>AI Model</button>
-              <button className={ecoLabelTab==='dept'?'on':''} onClick={()=>setEcoLabelTab('dept')}>Department</button>
+              <span style={{fontSize:11,color:'#90a4ae',fontWeight:700,alignSelf:'center',marginRight:4}}>Assess:</span>
+              <button className={ecoLabelTab==='ai'?'on':''} onClick={()=>setEcoLabelTab('ai')}>AI model only</button>
+              <button className={ecoLabelTab==='dept'?'on':''} onClick={()=>setEcoLabelTab('dept')}>Radiology department</button>
             </div>
           </div>
 
           {ecoLabelTab==='ai' && (<>
           <p className="note" style={{marginBottom:8}}>
-            Enter your model's actual training metrics to generate a standardised sustainability label for paper or conference submission.
+            Score a single AI model on its own — the standalone research-disclosure label, with no department context.
+            To see how a model affects an imaging operation's footprint, switch to <strong>Radiology department</strong> and attach it under "Deployed AI tools".
             Fields align with the AI environmental reporting framework recommended in Doo FX et al. <em>Radiology</em> 2024 (DOI 10.1148/radiol.232030).
           </p>
           <p className="note" style={{marginBottom:16}}>
@@ -3103,6 +3143,64 @@ function App() {
               <p className="note" style={{marginTop:8}}>Use your facility's utility bills or energy management system for the most accurate kWh figure. If unavailable, use the Radiology Dashboard estimated total. Renewable energy % reduces the effective carbon intensity.</p>
             </div>
 
+            {/* ── Deployed AI tools ── */}
+            <div className="inputSummary" style={{marginBottom:24}}>
+              <h2 style={{marginTop:0,marginBottom:8,color:'#1b5e20',display:'flex',alignItems:'center',gap:8}}><Brain style={{width:20,height:20}}/> Deployed AI tools <span style={{fontWeight:400,fontSize:14,color:'#607d66'}}>(optional — fold AI into the department score)</span></h2>
+              <p className="note" style={{marginBottom:14}}>
+                Each tool adds its <strong>net</strong> annual CO₂ to the department: amortised training + inference + embodied GPU, minus clinical savings (shorter protocols + avoided low-value scans). A tool can be net-negative if it prevents more than it costs.
+                {deptLabelData.aiToolCount > 0 && (
+                  <> <strong style={{color: deptLabelData.aiNetCo2Yr <= 0 ? '#2E7D32' : '#c62828'}}>
+                    {deptLabelData.aiToolCount} tool{deptLabelData.aiToolCount>1?'s':''}: net {deptLabelData.aiNetCo2Yr >= 0 ? '+' : ''}{deptLabelData.aiNetCo2Yr.toLocaleString()} kgCO₂e/yr
+                  </strong> (gross +{deptLabelData.aiGrossCo2Yr.toLocaleString()} − savings {deptLabelData.aiSavingsCo2Yr.toLocaleString()})</>
+                )}
+              </p>
+
+              <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:14}}>
+                <button disabled={deptLabelData.aiToolCount>=5} onClick={()=>addDeptAiTool({
+                  id: Date.now(), label: AI_MODEL_BY_KEY[scen.modelKey]?.label ?? 'AI model',
+                  inferKwhPerStudy: String(ai.inference.kwhPerStudy), trainKwhTotal: String(ai.training.kwhTotal),
+                  embCo2Kg: String(ai.embCo2KgTotal), deployMonths: String(scen.deployMonths || '36'),
+                  scanTimeReductPct: String(ai.scanTimeReductPct), lowValueReductPct: String(ai.lowValueReductPct), studiesShare: '100',
+                })} style={{display:'inline-flex',alignItems:'center',gap:6,opacity:deptLabelData.aiToolCount>=5?0.5:1}}>
+                  <ArrowRight size={13}/> Import current AI Dashboard model
+                </button>
+                <button disabled={deptLabelData.aiToolCount>=5} onClick={()=>addDeptAiTool({
+                  id: Date.now(), label: '', inferKwhPerStudy: '', trainKwhTotal: '', embCo2Kg: '0',
+                  deployMonths: '36', scanTimeReductPct: '0', lowValueReductPct: '0', studiesShare: '100',
+                })} style={{background:'#e8f5e9',color:'#2E7D32',boxShadow:'none',border:'1px dashed #a5d6a7',opacity:deptLabelData.aiToolCount>=5?0.5:1}}>
+                  <Plus size={13}/> Add AI tool manually
+                </button>
+                <span style={{fontSize:12,color:'#607d66',alignSelf:'center'}}>{deptLabelData.aiToolCount} / 5</span>
+              </div>
+
+              {deptLabelData.aiToolResults.map(t => (
+                <div key={t.id} style={{border:'1px solid #c8e6c9',borderRadius:12,padding:'12px 14px',marginBottom:10,background:'#fafffa'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                    <input value={t.label} placeholder="AI tool name" onChange={e=>updateDeptAiTool(t.id,'label',e.target.value)} style={{flex:1,padding:'6px 10px',border:'1px solid #c8e6c9',borderRadius:8,fontSize:13,fontWeight:600}}/>
+                    <span style={{fontSize:13,fontWeight:800,color: t.netCo2Yr <= 0 ? '#2E7D32' : '#c62828',whiteSpace:'nowrap'}}>net {t.netCo2Yr >= 0 ? '+' : ''}{t.netCo2Yr.toLocaleString()} kgCO₂e/yr</span>
+                    <button onClick={()=>removeDeptAiTool(t.id)} title="Remove" style={{background:'none',color:'#aaa',padding:4,borderRadius:8,boxShadow:'none',lineHeight:1}}><Trash2 size={15}/></button>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
+                    {[
+                      ['Inference kWh/study','inferKwhPerStudy','0.001','e.g. 0.02'],
+                      ['Total training energy (kWh)','trainKwhTotal','1','e.g. 500'],
+                      ['Deployment lifespan (months)','deployMonths','1','36'],
+                      ['Scan-time reduction (%)','scanTimeReductPct','1','0'],
+                      ['Low-value imaging avoided (%)','lowValueReductPct','1','0'],
+                      ['Share of studies processed (%)','studiesShare','1','100'],
+                    ].map(([lab,key,step,ph])=>(
+                      <label key={key} style={{display:'flex',flexDirection:'column',gap:3,fontWeight:700,color:'#2E7D32',fontSize:11}}>
+                        {lab}
+                        <input type="number" min="0" step={step} value={t[key]} placeholder={ph} onChange={e=>updateDeptAiTool(t.id,key,e.target.value)} style={{padding:'5px 8px',border:'1px solid #c8e6c9',borderRadius:8,fontSize:12,background:'white'}}/>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="note" style={{fontSize:10,marginTop:6,marginBottom:0}}>Adds {t.kwhYr.toLocaleString()} kWh/yr · gross {t.grossCo2Yr.toLocaleString()} kgCO₂e/yr · clinical savings −{t.savingsCo2Yr.toLocaleString()} kgCO₂e/yr (over {t.studiesAI.toLocaleString()} studies/yr).</p>
+                </div>
+              ))}
+              {deptLabelData.aiToolCount === 0 && <p className="note" style={{fontSize:12}}>No AI tools attached — the department score reflects facility energy only. Import a model from the AI Dashboard or add one manually.</p>}
+            </div>
+
             <div className="inputSummary" style={{marginBottom:32}}>
               <h2 style={{marginTop:0,marginBottom:8,color:'#1b5e20'}}>Sustainability actions <span style={{fontWeight:400,fontSize:14,color:'#607d66'}}>(tick implemented interventions)</span></h2>
               <p className="note" style={{marginBottom:16}}>
@@ -3152,6 +3250,7 @@ function App() {
                 {[
                   ['Annual electricity',   deptLabelData.annualKwh>0 ? `${deptLabelData.annualKwh.toLocaleString()} kWh` : '—'],
                   ['Annual CO₂e',         deptLabelData.totalAnnualCo2>0 ? `${deptLabelData.totalAnnualCo2.toLocaleString()} kgCO₂e` : '—'],
+                  ...(deptLabelData.aiToolCount>0 ? [['Deployed AI tools', `${deptLabelData.aiToolCount} · net ${deptLabelData.aiNetCo2Yr>=0?'+':''}${deptLabelData.aiNetCo2Yr.toLocaleString()} kgCO₂e/yr`]] : []),
                   ['Studies / year',       deptLabelData.annualStudies>0 ? deptLabelData.annualStudies.toLocaleString() : '—'],
                   ['Energy per study',     deptLabelData.kwhPerStudy>0 ? `${deptLabelData.kwhPerStudy} kWh` : '—'],
                   ['Effective grid CI',    `${deptLabelData.effectiveCi} kgCO₂e/kWh (${deptLabelData.renewablePct}% renewable)`],
@@ -3203,10 +3302,11 @@ function App() {
                   ['1', 'Imaging operation (studies / year)', d.hasData ? `${d.annualStudies.toLocaleString()} studies/yr` : '—', d.hasData, 'Department'],
                   ['2', 'Total energy (kWh / year)', d.annualKwh > 0 ? `${d.annualKwh.toLocaleString()} kWh` : '—', d.annualKwh > 0, 'Department'],
                   ['3', 'Grid carbon intensity, location, source', `${d.effectiveCi} kgCO₂e/kWh · ${d.region} · ${d.renewablePct}% renewable`, !!d.region, 'Grid'],
-                  ['4', 'Annual carbon footprint', d.totalAnnualCo2 > 0 ? `${d.totalAnnualCo2.toLocaleString()} kgCO₂e` : '—', d.totalAnnualCo2 > 0, 'Department'],
-                  ['5', 'Active mitigation / interventions', d.interventionCount > 0 ? `${d.interventionCount} · ~${d.annualKwhSaving.toLocaleString()} kWh/yr saved` : 'none reported', d.interventionCount > 0, 'Interventions'],
-                  ['6', 'Carbon intensity per study', d.hasData ? `${d.co2PerStudy} kgCO₂e/study` : '—', d.hasData, 'Department'],
-                  ['7', 'CEDARS Score + Rating', d.hasData ? `Score ${d.score} · ${d.leaves}/5 leaves (${d.ratingLabel})` : '—', d.hasData, 'Score / Rating'],
+                  ['4', 'Annual carbon footprint (facility + AI)', d.totalAnnualCo2 > 0 ? `${d.totalAnnualCo2.toLocaleString()} kgCO₂e` : '—', d.totalAnnualCo2 > 0, 'Department'],
+                  ['5', 'Deployed AI tools (net annual CO₂)', d.aiToolCount > 0 ? `${d.aiToolCount} · net ${d.aiNetCo2Yr>=0?'+':''}${d.aiNetCo2Yr.toLocaleString()} kgCO₂e/yr` : 'none deployed', d.aiToolCount > 0, 'AI workload'],
+                  ['6', 'Active mitigation / interventions', d.interventionCount > 0 ? `${d.interventionCount} · ~${d.annualKwhSaving.toLocaleString()} kWh/yr saved` : 'none reported', d.interventionCount > 0, 'Interventions'],
+                  ['7', 'Carbon intensity per study', d.hasData ? `${d.co2PerStudy} kgCO₂e/study` : '—', d.hasData, 'Department'],
+                  ['8', 'CEDARS Score + Rating', d.hasData ? `Score ${d.score} · ${d.leaves}/5 leaves (${d.ratingLabel})` : '—', d.hasData, 'Score / Rating'],
                 ];
                 return (
                   <div style={{border:'1px solid #c8e6c9', borderRadius:14, overflow:'hidden'}}>
