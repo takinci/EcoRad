@@ -1155,7 +1155,7 @@ function generateEcoMarkdown(d) {
     '|:---|:---|',
     ...rows.map(([k, v]) => `| ${k} | ${v} |`),
     '',
-    '> Sustainability label generated with [CEDARS](https://takinci.github.io/EcoRad/).',
+    '> Sustainability label generated with [CEDARS](https://takinci.github.io/cedars/).',
     '> Reporting framework: Doo FX et al. *Radiology* 2024 · DOI 10.1148/radiol.232030.',
   ].join('\n');
 }
@@ -1666,7 +1666,7 @@ function App() {
   return (
     <>
       <header>
-        <Logo onClick={() => window.location.assign('https://takinci.github.io/EcoRad/')}/>
+        <Logo onClick={() => window.location.assign('https://takinci.github.io/cedars/')}/>
         <nav>
           {pages.map(p => (
             <button key={p} className={page===p?'on':''} onClick={()=>setPage(p)}>{PAGE_LABELS[p] ?? p}</button>
@@ -3149,7 +3149,7 @@ function App() {
       <footer>
         <Logo dark/>
         <span>ESG-ready sustainability intelligence for academic hospitals, enterprise healthcare systems, radiology AI teams, and scientific reporting.</span>
-        <a href="https://github.com/takinci/EcoRad/blob/main/sources.md" style={{color:'#A5D6A7',fontSize:13,whiteSpace:'nowrap'}} target="_blank" rel="noreferrer">All assumptions &amp; citations: sources.md</a>
+        <a href="https://github.com/takinci/cedars/blob/main/sources.md" style={{color:'#A5D6A7',fontSize:13,whiteSpace:'nowrap'}} target="_blank" rel="noreferrer">All assumptions &amp; citations: sources.md</a>
       </footer>
     </>
   );
