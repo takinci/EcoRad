@@ -6,7 +6,7 @@
 
 ### Carbon, Energy Diagnostics for AI and Radiology Sustainability
 
-**Measure the environmental footprint of a clinical imaging department — energy, carbon, water, AI, and more — directly in your browser.**
+**Measure the environmental footprint of clinical imaging — energy, carbon, water, and AI — and turn it into a standardised, shareable disclosure, directly in your browser.**
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-takinci.github.io%2Fcedars-2E7D32?style=for-the-badge&logo=github)](https://takinci.github.io/cedars/)
 [![Built with React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react)](https://react.dev)
@@ -19,7 +19,7 @@
 
 ## What is CEDARS?
 
-CEDARS (Carbon, Energy Diagnostics for AI and Radiology Sustainability) is a browser-based sustainability dashboard for clinical radiology departments. It quantifies the environmental impact of imaging operations, compares interventions, models AI tool footprints, and generates shareable reports — all from published literature defaults that you can override with your own measured data.
+CEDARS (Carbon, Energy Diagnostics for AI and Radiology Sustainability) is a browser-based tool that quantifies the environmental footprint of a radiology operation **and** of the AI models it deploys, then expresses the result as a standardised **CEDARS Score and Rating** ecolabel for reporting and comparison — all from published literature defaults you can override with your own measured data.
 
 No installation. No backend. No data leaves your browser.
 
@@ -29,87 +29,91 @@ No installation. No backend. No data leaves your browser.
 
 ## What can it do?
 
-### 🔋 Radiology Sustainability Dashboard
+CEDARS is organised into five pages: **Home · Radiology Dashboard · AI Dashboard · Compare · EcoLabel**.
 
-Five metric categories, fully reactive to your region, department profile, and time period:
+### 🔋 Radiology Dashboard
+
+Build your department by setting the count of each device in your **equipment fleet** (MRI by field strength, CT, PET-CT, X-ray, mammography, ultrasound, angio/IR, fluoroscopy, PACS, workstations). Every metric reacts to your fleet, region, and time period:
 
 | Category | What it tracks |
 |---|---|
-| **1. Energy consumption** | Total kWh/MWh, active vs idle breakdown, avoidable idle, energy per scan |
-| **2. Carbon emissions** | GHG Protocol Scope 1 (direct), Scope 2 (electricity), Scope 3 (hardware embodied + patient travel) with stacked bar chart |
-| **3. Infrastructure** | Top idle waster, hardware lifespans, carbon intensity, Scope 3 total, top-5 opportunity table |
-| **4. Resource footprint** | Water (L/kWh cooling), paper consumption (g/encounter), hazardous waste (contrast media) |
-| **5. Real-world equivalencies** | Car km, phone charges, tree-years to offset, short-haul flights (ICAO 2023), household electricity years |
+| **1. Energy** | Total kWh/MWh, active vs idle breakdown, avoidable idle, energy per scan |
+| **2. Carbon (GHG Scopes)** | Scope 1 (direct) · Scope 2 (electricity) · Scope 3 — embodied hardware, patient travel, **staff commute** (auto-estimated from the device fleet), and **DICOM data transfer** — plus a per-study **Software Carbon Intensity (SCI)** metric (Green Software Foundation) |
+| **3. Infrastructure** | Top idle waster, hardware lifespans, grid carbon intensity, Scope 3 total, top-5 opportunity table |
+| **4. Resource footprint** | Water (cooling), paper, hazardous waste (contrast media) |
+| **5. Real-world equivalencies** | Car km, phone charges, tree-years, short-haul flights, household-electricity years |
+
+The Home page can also **add one or more AI/ML tools** so their footprint is included in the department totals.
 
 ### 🤖 AI Sustainability Dashboard
 
-Three-phase lifecycle model for a radiology AI tool:
+Model the lifecycle footprint of a radiology AI tool with a tabbed, three-phase breakdown plus a built-in cloud-infrastructure view.
 
-| Phase | Metrics |
-|---|---|
-| **Training** | Total kWh (one-time), CO₂e, estimated GPU hours, amortised per month |
-| **Testing / validation** | Hold-out set energy, CO₂e, proxy metric note (DLP/CTDIvol R²=0.87–0.92) |
-| **Inference & deployment** | Per-study energy, monthly and lifetime totals, water footprint |
+- **Task-family model library** — start from an editable, literature-anchored template: Classification/triage, lesion detection, 2D & 3D segmentation, reconstruction/denoising, diffusion synthesis, report generation (LLM/VLM), foundation/prompt models, or Custom.
+- **Advanced model parameters** (progressive disclosure) — parameters, 2D/3D, input resolution, slices; inference energy **scales physically** with `params × resolution² (× slices)`.
+- **GPU training-energy estimator** — derive training kWh from GPU type × count × hours × PUE, or enter a measured value.
+- **Performance is user-owned, never predicted** — you enter the model's reported accuracy (with its metric: AUC, Dice, SSIM…) and any clinical co-benefits; defaults come from the cited reference.
+- **Lifecycle tabs** — Training, Testing/validation, Inference & deployment, Carbon summary, Clinical co-benefits.
+- **Infrastructure tab** — full cloud-carbon accounting (compute, storage, data transfer, monthly totals, cross-region optimisation), with the AI's training + inference auto-seeded; provider/region are shared with the lifecycle math.
 
-Plus: Green AI efficiency ratio (accuracy % per kWh), PUE, embodied GPU carbon, rebound effect risk, and a full modality energy benchmark table (Vosshenrich et al.).
+### 📊 Compare
 
-Selectable **architecture** (CNN, U-Net, EfficientNet, ViT, Diffusion/Generative), **model size**, **precision** (float32 / float16 AMP), and **cloud provider**.
+Two modes in one tab:
 
-### 📊 Scenario Comparison
+- **Interventions** — pick an evidence-based action (turn scanners off overnight, standby mode, reduce low-value imaging, shorten protocols, renewable electricity, lower-carbon region, smaller AI models, consolidate servers, …) and see the before/after energy and carbon.
+- **AI model benchmark** — shortlist several model configurations, compare them in a table under one department context, and read off the **accuracy-vs-carbon trade-off** on a Pareto scatter (efficient models highlighted).
 
-Pick from 12 evidence-based interventions and see the before/after energy and carbon impact:
+### 🏷️ EcoLabel — CEDARS Score & Rating
 
-> Turn MRI/CT off overnight · Standby mode · Reduce low-value imaging · Shorten protocols · Renewable electricity · Move computation to lower-carbon region · Use smaller AI models · Consolidate servers · and more
+Turn an estimate into a standardised disclosure, after the design logic of Energy Star and the EU Energy Label:
+
+- **CEDARS Score** — a continuous **0–100** value from the estimated footprint, for precise reporting.
+- **CEDARS Rating** — a recognisable **1–5 leaf** badge mapped from the Score.
+- **Disclosure checklist** — the minimum set of items for a reproducible footprint (hardware, energy, grid intensity, cloud/PUE, training–inference split, water, Score+Rating), modelled on CLAIM/DEAL.
+- **Two scopes:**
+  - **AI model only** — a standalone research-disclosure label for a single model.
+  - **Radiology department** — facility energy plus a list of **deployed AI tools**, whose *net* annual CO₂ (compute minus clinical savings) folds into the department's score; import a model from the AI Dashboard in one click or enter one manually.
+- **Export** each label as a PNG badge, a markdown table, or a ready-to-paste paper/ESG paragraph.
 
 ### 📤 Export
 
-Download a CSV report or print to PDF with a clean print-optimised layout. The export page includes key assumption citations so reports are audit-ready.
-
----
-
-## Department Profiles
-
-Switch profile to load a different equipment fleet — all numbers update instantly:
-
-| Profile | Fleet |
-|---|---|
-| **Hospital radiology** | MRI 3T + CT + X-ray + Ultrasound + PACS + Workstations |
-| **Outpatient imaging center** | MRI 1.5T + smaller CT + X-ray + 3× Ultrasound |
-| **Research imaging lab** | MRI 7T + MRI 3T + CT + Ultrasound + Analysis Workstations ×8 |
-| **Teleradiology / informatics** | Remote PACS + Archive + AI Inference Servers + Workstations ×12 |
+Per-dashboard CSV reports, print-to-PDF with a clean layout, and the EcoLabel exports above — all carrying key assumption citations so reports are audit-ready.
 
 ---
 
 ## Configurable inputs
 
-All settings are reflected in the URL hash — copy the link to share your exact configuration:
+Core settings are reflected in the URL hash — copy the link to share your exact configuration:
 
-- **Region / grid** — Switzerland, France, Germany, United States, United Kingdom, EU average, Global average, Custom
+- **Equipment fleet** — set the count of each device type
+- **Region / grid** — Switzerland, France, Germany, United States, United Kingdom, EU average, Global average, or a custom carbon intensity
 - **Time period** — Monthly, Quarterly, Annual
-- **Department profile** — 4 presets (see above)
-- **Metric type** — Energy, Carbon, Water, AI net impact
-- **Intended use** — footprint estimate, modality comparison, KPI tracking, AI impact, intervention evaluation
+- **Renewable %** and **custom grid intensity** where applicable
+- **Cloud provider & region** — Local / AWS / Azure / Google Cloud, with per-region grid intensity for AI and infrastructure
+
+Staff-commute headcount is derived automatically from the device fleet (NHS/BIR workforce ratios), so it needs no manual entry.
 
 ---
 
 ## Scientific basis
 
-Every default value is sourced from peer-reviewed literature. Key references:
+Every default value is sourced from peer-reviewed literature and listed in **[sources.md](./sources.md)**. Selected references:
 
 | Area | Source |
 |---|---|
-| MRI active power (30 kW, 3T) | Heye et al. *J Magn Reson Imaging* 2023 · DOI [10.1002/jmri.28994](https://doi.org/10.1002/jmri.28994) |
+| MRI active power (≈30 kW, 3T) | Heye et al. *J Magn Reson Imaging* 2023 · DOI [10.1002/jmri.28994](https://doi.org/10.1002/jmri.28994) |
 | CT active power (40–80 kW) | Acra 2024 · DOI [10.1016/j.acra.2024.05.004](https://doi.org/10.1016/j.acra.2024.05.004) |
+| Interventional imaging power (direct sensor) | Vosshenrich et al. *AJR* 2024 · DOI [10.2214/AJR.24.30988](https://doi.org/10.2214/AJR.24.30988) |
 | Carbon intensity by region | Our World in Data 2022–2023 · [ourworldindata.org](https://ourworldindata.org/grapher/carbon-intensity-electricity) |
-| AI footprint methodology | Doo et al. *Radiology* 2024 · DOI [10.1148/radiol.232030](https://doi.org/10.1148/radiol.232030) |
+| AI footprint & lifecycle framework | Doo et al. *Radiology* 2024 · DOI [10.1148/radiol.232030](https://doi.org/10.1148/radiol.232030) |
+| LLM energy vs. model size | Doo et al. *Radiology* 2024 · DOI [10.1148/radiol.240320](https://doi.org/10.1148/radiol.240320) |
+| DICOM network energy (0.001 kWh/GB) | Aslan et al. *J Industrial Ecology* 2018 · DOI [10.1111/jiec.12630](https://doi.org/10.1111/jiec.12630) |
+| Software Carbon Intensity (SCI) | Green Software Foundation · SCI Specification v1.0 |
 | Intervention savings | McKee et al. *Radiology* 2024 · DOI [10.1148/radiol.240219](https://doi.org/10.1148/radiol.240219) |
-| Modality energy benchmarks | Vosshenrich et al. (Implementation Guide) |
-| Idle state efficiency | Schoen et al. — idle offers 14.9× more savings than active state |
-| ESR guidance | ESR Green Imaging self-assessment · ESR Position Paper 2025 |
+| Ecolabel design logic | Energy Star · EU Energy Label (Regulation EU 2021/341) |
+| AI model library anchors | CheXNet, U-Net, nnU-Net, MedSAM, diffusion recon (see sources.md) |
 
-Full reference list: [sources.md](./sources.md)
-
-> **All values are literature-derived defaults.** Replace them with your own scanner logs, utility bills, or measured data for publication-quality reporting.
+> **All values are literature-derived defaults.** Replace them with your own scanner logs, utility bills, GPU measurements, or validation results for publication-quality reporting. CEDARS **models energy** but only **records performance** — it never predicts a model's accuracy.
 
 ---
 
@@ -130,6 +134,8 @@ To build for deployment:
 npm run build   # outputs to ../docs/
 ```
 
+> Requires Node 20+ (Vite 5).
+
 ---
 
 ## Tech stack
@@ -147,25 +153,26 @@ npm run build   # outputs to ../docs/
 
 ## Who is it for?
 
-- **Radiologists and clinical leads** — understand the footprint of your department and identify quick wins
-- **Sustainability officers** — generate Scope 1/2/3 estimates and intervention comparisons for ESG reporting
+- **Radiologists and clinical leads** — understand your department's footprint and find quick wins
+- **Sustainability officers** — generate Scope 1/2/3 estimates and CEDARS disclosures for ESG reporting
 - **Medical physicists** — benchmark scanner energy against published literature
-- **AI governance teams** — model the lifecycle carbon footprint of a radiology AI tool before deployment
-- **Academic researchers** — explore and cite the evidence base, export data for publications
-- **Healthcare executives** — communicate sustainability performance in accessible equivalencies (car km, flights, tree-years)
+- **AI developers and governance teams** — model an AI tool's lifecycle carbon, benchmark candidates on accuracy-vs-carbon, and attach the result to a department
+- **Academic researchers** — generate a standardised CEDARS EcoLabel for a manuscript, with a reproducible disclosure checklist
+- **Healthcare executives** — communicate performance in accessible equivalencies
 
 ---
 
 ## Assumptions and governance
 
-1. Prefer measured data — scanner logs, smart meters, utility bills always override defaults
+1. Prefer measured data — scanner logs, smart meters, utility bills, GPU measurements always override defaults
 2. Literature values are transparent defaults, not authoritative truth
 3. Mark every input as *measured*, *estimated*, or *assumed*
 4. Carbon intensity must be editable and region-specific
 5. Separate AI gross footprint from estimated sustainability benefits
 6. Report Scope 1, 2, and 3 separately
+7. **Energy may be modelled; model performance may only be recorded** — accuracy and clinical benefit are user-entered, never predicted
 
-See [sources.md](./sources.md) for the full assumptions governance document.
+See [sources.md](./sources.md) for the full assumptions-governance document.
 
 ---
 
