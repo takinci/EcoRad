@@ -554,7 +554,15 @@ function computeScenario(intervention, region, timePeriod, equipment, customCi, 
 }
 
 function computeAI(cloudProvider, region, modelSize, precision, architecture, customCi, equipment, overrides = {}) {
-  const cf    = CLOUD[cloudProvider]          ?? CLOUD["Local compute"];
+  // Cloud carbon: use the specific deployment region's grid CI when given (shared with the
+  // Infrastructure tab), falling back to the provider's coarse average.
+  const baseCf   = CLOUD[cloudProvider] ?? CLOUD["Local compute"];
+  const provData = CLOUD_REGIONS[cloudProvider];
+  const regionCi = (provData && overrides.cloudRegion != null) ? provData.regions[overrides.cloudRegion] : undefined;
+  const cf    = {
+    pue: provData?.pue ?? baseCf.pue,
+    ci:  (regionCi != null) ? regionCi : baseCf.ci,
+  };
   const ci    = getCI(region, customCi);
   const model = AI_MODELS[modelSize]           ?? AI_MODELS["Small (< 100M params)"];
   const arch  = AI_ARCHITECTURES[architecture] ?? AI_ARCHITECTURES["CNN / ResNet"];
@@ -640,6 +648,14 @@ function computeCloudCarbon(t) {
   const ci        = rnd(regionCi * (1 - renewable / 100), 4);
 
   const computeResults = t.computeLines.map(line => {
+    // Locked AI lines carry an already-PUE-inclusive energy from the AI lifecycle model.
+    // Back out the PUE so the rest of the pipeline (pueKwh, regional optimisation) stays uniform.
+    if (line.fixedKwh != null) {
+      const pueKwh = rnd(parseFloat(line.fixedKwh) || 0, 2);
+      const rawKwh = rnd(pue > 0 ? pueKwh / pue : pueKwh, 2);
+      const co2    = rnd(pueKwh * ci, 2);
+      return {...line, watt: 0, count: '—', hoursPerMonth: '—', rawKwh, pueKwh, co2, category: 'gpu'};
+    }
     const preset = CLOUD_INSTANCES[line.instance];
     const watt   = line.instance === 'Custom (enter watts)'
       ? (parseFloat(line.customWatt) || 0)
@@ -1179,6 +1195,7 @@ function App() {
   const [scen, setScen] = useState({
     intervention: "Turn MRI/CT scanners off overnight",
     cloudProvider: "Local compute",
+    cloudRegion: "On-premise (Switzerland)",
     scannerState: "Standby",
     modelSize: "Small (< 100M params)",
     precision: "float32 (standard)",
@@ -1192,6 +1209,12 @@ function App() {
 
   const set  = (key, val) => setSettings(s => ({...s, [key]: val}));
   const setS = (key, val) => setScen(s => ({...s, [key]: val}));
+  // Provider + region are shared between the AI lifecycle math and the Infrastructure tab.
+  // Changing provider resets region to that provider's first (cleanest-listed) region.
+  const setCloudProvider = prov => setScen(s => ({
+    ...s, cloudProvider: prov,
+    cloudRegion: Object.keys(CLOUD_REGIONS[prov]?.regions ?? {})[0] ?? '',
+  }));
   const [aiTab,         setAiTab]         = useState('model');
   const [trainExpanded, setTrainExpanded] = useState(false);
   const [dashTab, setDashTab] = useState('equiv');
@@ -1234,13 +1257,11 @@ function App() {
       : [...d.activeInterventions, name],
   }));
 
+  // Provider + region now live in `scen` (shared with AI lifecycle). This holds only the
+  // extra Infrastructure-tab workloads layered on top of the auto-seeded AI training/inference.
   const [cloudTracker, setCloudTracker] = useState({
-    provider: 'AWS',
-    region: 'eu-west-1 (Ireland)',
     renewablePct: '0',
-    computeLines: [
-      {id: 1, label: 'AI inference server', instance: 'GPU: NVIDIA T4 (g4dn.xlarge / n1-std-4+T4)', count: '1', hoursPerMonth: '720', customWatt: ''},
-    ],
+    computeLines: [],
     storageLines: [
       {id: 1, label: 'PACS archive', type: 'HDD (object storage — S3 / Blob)', tb: '10'},
     ],
@@ -1293,8 +1314,8 @@ function App() {
     const trainN      = Math.max(1, parseInt(scen.trainNumGpus) || 1);
     const pue         = CLOUD[scen.cloudProvider]?.pue ?? 1.5;
     const trainKwh    = gpuPreset && trainH > 0 ? rnd(gpuPreset.tdpKw * trainN * trainH * pue, 1) : 0;
-    return computeAI(scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.equipment, {trainKwh, testStudies: scen.testStudies, deployMonths: scen.deployMonths});
-  }, [scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.equipment, scen.trainGpu, scen.trainNumGpus, scen.trainHours, scen.testStudies, scen.deployMonths]);
+    return computeAI(scen.cloudProvider, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.equipment, {trainKwh, testStudies: scen.testStudies, deployMonths: scen.deployMonths, cloudRegion: scen.cloudRegion});
+  }, [scen.cloudProvider, scen.cloudRegion, settings.region, scen.modelSize, scen.precision, scen.architecture, settings.customCi, settings.equipment, scen.trainGpu, scen.trainNumGpus, scen.trainHours, scen.testStudies, scen.deployMonths]);
 
   const landingAIKwh = useMemo(() => {
     if (!landingAIOpen) return 0;
@@ -1448,7 +1469,23 @@ function App() {
     };
   }, [deptLabel, settings.customCi]);
 
-  const cloudResult = useMemo(() => computeCloudCarbon(cloudTracker), [cloudTracker]);
+  // Auto-seed the AI model's training (amortised) + inference as locked compute lines,
+  // then layer the user's own Infrastructure-tab workloads on top. Provider/region come
+  // from `scen` so the Infrastructure tab and the AI lifecycle math stay in sync.
+  const cloudInput = useMemo(() => {
+    const aiLines = [];
+    if (ai.training?.kwhAmortised > 0)
+      aiLines.push({id: '__ai_train', label: 'AI training (amortised)', fixedKwh: ai.training.kwhAmortised, locked: true});
+    if (ai.inference?.kwhMonthly > 0)
+      aiLines.push({id: '__ai_infer', label: 'AI inference', fixedKwh: ai.inference.kwhMonthly, locked: true});
+    return {
+      ...cloudTracker,
+      provider: scen.cloudProvider,
+      region: scen.cloudRegion,
+      computeLines: [...aiLines, ...cloudTracker.computeLines],
+    };
+  }, [cloudTracker, scen.cloudProvider, scen.cloudRegion, ai.training, ai.inference]);
+  const cloudResult = useMemo(() => computeCloudCarbon(cloudInput), [cloudInput]);
 
   const chartEnergy = {
     labels: dash.byEquipment.map(x => x.equipment),
@@ -1503,8 +1540,8 @@ function App() {
     responsive:true,
   };
 
-  const pages = ['landing','dashboard','ai','cloudtrack','scenario','ecolabel'];
-  const PAGE_LABELS = {landing:'Home', dashboard:'Radiology Dashboard', ai:'AI Dashboard', cloudtrack:'Cloud Carbon', scenario:'Scenario', ecolabel:'EcoLabel'};
+  const pages = ['landing','dashboard','ai','scenario','ecolabel'];
+  const PAGE_LABELS = {landing:'Home', dashboard:'Radiology Dashboard', ai:'AI Dashboard', scenario:'Scenario', ecolabel:'EcoLabel'};
 
   return (
     <>
@@ -1994,7 +2031,7 @@ function App() {
               <Sel label="Architecture"       value={scen.architecture}  options={META.architectures}  onChange={v=>setS('architecture',v)}/>
               <Sel label="Model size"         value={scen.modelSize}     options={META.modelSizes}     onChange={v=>setS('modelSize',v)}/>
               <Sel label="Precision / AMP"    value={scen.precision}     options={META.precisions}     onChange={v=>setS('precision',v)}/>
-              <Sel label="Cloud / deployment" value={scen.cloudProvider} options={META.cloudProviders} onChange={v=>setS('cloudProvider',v)}/>
+              <Sel label="Cloud / deployment" value={scen.cloudProvider} options={META.cloudProviders} onChange={setCloudProvider}/>
             </div>
 
             {/* Collapsible training assumptions */}
@@ -2060,7 +2097,7 @@ function App() {
               <span>Cloud CI <b>{ai.cloudCi} kgCO₂e/kWh</b></span>
             </div>
             <div className="aiTabs" style={{marginTop:8}}>
-              {[['model','Model'],['training','Training'],['testing','Testing'],['inference','Inference'],['carbon','Carbon'],['clinical','Clinical']].map(([id,lbl])=>(
+              {[['model','Model'],['training','Training'],['testing','Testing'],['inference','Inference'],['carbon','Carbon'],['clinical','Clinical'],['infra','Infrastructure']].map(([id,lbl])=>(
                 <button key={id} className={aiTab===id?'on':''} onClick={()=>{
                   setAiTab(id);
                   document.getElementById('ai-'+id)?.scrollIntoView({behavior:'smooth',block:'start'});
@@ -2162,227 +2199,209 @@ function App() {
             </div>
           </section>
 
-        </main>
-      )}
-
-      {/* ── Cloud Carbon Tracker ── */}
-      {page==='cloudtrack' && (
-        <main>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,marginBottom:8}}>
-            <h1 style={{margin:0}}>Cloud carbon tracker <span className="badge">{cloudTracker.provider}</span></h1>
-            <div style={{display:'flex',gap:8}}>
-              <button className="download" onClick={()=>downloadCloudCSV(cloudResult, cloudTracker)} style={{padding:'8px 14px',fontSize:13}}><Download/>CSV</button>
-              <button className="download" onClick={handlePrint} style={{padding:'8px 14px',fontSize:13}}><Download/>Print / PDF</button>
+          {/* ── Infrastructure (cloud carbon, merged) ── */}
+          <section id="ai-infra" className="aiSection" style={{background:'none',boxShadow:'none',padding:0,marginTop:28}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,marginBottom:8}}>
+              <h2 style={{margin:0}}>Cloud infrastructure footprint</h2>
+              <button className="download" onClick={()=>downloadCloudCSV(cloudResult, cloudInput)} style={{padding:'8px 14px',fontSize:13}}><Download/>Cloud CSV</button>
             </div>
-          </div>
-          <p className="note" style={{marginBottom:24}}>
-            Track the carbon footprint of your cloud infrastructure workload-by-workload — compute, storage, and data transfer.
-            Inspired by <a href="https://www.cloudcarbonfootprint.org/" style={{color:'#2E7D32'}} target="_blank" rel="noreferrer">Cloud Carbon Footprint</a>.
-            Select a provider and region to get per-region grid intensities; add workloads below.
-          </p>
-
-          {/* ── Sticky summary ── */}
-          <div className="stickyControls" style={{marginBottom:24}}>
-            <div className="aiSummary">
-              <span>Total energy <b>{fmtKwh(cloudResult.totalKwh)} / mo</b></span>
-              <span>Total CO₂ <b style={{color: cloudResult.totalCo2 > 0 ? '#c62828' : '#2E7D32'}}>{fmtCo2(cloudResult.totalCo2)} / mo</b></span>
-              <span>Grid CI <b>{cloudResult.regionCi} kgCO₂e/kWh</b></span>
-              <span>PUE <b>{cloudResult.pue}</b></span>
-              {cloudResult.renewable > 0 && <span>Renewables <b>{cloudResult.renewable}%</b></span>}
-            </div>
-          </div>
-
-          {/* ── Configuration ── */}
-          <div className="inputSummary" style={{marginBottom:20}}>
-            <h2 style={{marginTop:0, marginBottom:14, color:'#1b5e20'}}>Provider &amp; region</h2>
-            <div className="grid grid3">
-              <label>
-                Cloud provider
-                <select value={cloudTracker.provider} onChange={e => {
-                  const prov = e.target.value;
-                  const firstRegion = Object.keys(CLOUD_REGIONS[prov]?.regions ?? {})[0] ?? '';
-                  setCloudTracker(t => ({...t, provider: prov, region: firstRegion}));
-                }}>
-                  {Object.keys(CLOUD_REGIONS).map(p => <option key={p}>{p}</option>)}
-                </select>
-              </label>
-              <label>
-                Region <span style={{fontWeight:400, fontSize:12, color:'#607d66'}}>— sets grid carbon intensity</span>
-                <select value={cloudTracker.region} onChange={e => setCloud('region', e.target.value)}>
-                  {Object.entries(CLOUD_REGIONS[cloudTracker.provider]?.regions ?? {}).map(([name, ci]) => (
-                    <option key={name} value={name}>{name} — {ci} kgCO₂e/kWh</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Renewable energy (%)
-                <input type="number" min="0" max="100" value={cloudTracker.renewablePct} onChange={e => setCloud('renewablePct', e.target.value)} placeholder="0–100"/>
-              </label>
-            </div>
-            <p className="note" style={{marginTop:8}}>
-              Effective CI: <strong>{cloudResult.ci} kgCO₂e/kWh</strong>
-              {cloudResult.renewable > 0 && <> (after {cloudResult.renewable}% renewable adjustment)</>}.
-              {' '}PUE: <strong>{cloudResult.pue}</strong> ({cloudTracker.provider} {cloudTracker.provider === 'Google Cloud' ? '— industry-leading efficiency' : 'global fleet average'}).
-            </p>
-          </div>
-
-          {/* ── Compute workloads ── */}
-          <div className="inputSummary" style={{marginBottom:20}}>
-            <h2 style={{marginTop:0, marginBottom:14, color:'#1b5e20', display:'flex', alignItems:'center', gap:8}}><Server style={{width:20,height:20}}/> Compute workloads</h2>
-            <p className="note" style={{marginBottom:12}}>Add each instance type separately. Hours/month max 744 (31 days × 24 h). GPU instances assume 100% utilisation; CPU at 50% avg.</p>
-
-            {/* Column headers */}
-            <div style={{display:'grid', gridTemplateColumns:'1.4fr 2.4fr 0.5fr 0.7fr 0.7fr 0.7fr 32px', gap:8, padding:'0 0 6px', borderBottom:'1px solid #c8e6c9', fontSize:11, fontWeight:700, color:'#607d66'}}>
-              <span>Workload label</span><span>Instance type</span><span>Count</span><span>h/month</span><span>kWh/mo</span><span>kgCO₂e/mo</span><span/>
-            </div>
-
-            {cloudResult.computeResults.map((res) => (
-              <div key={res.id} style={{display:'grid', gridTemplateColumns:'1.4fr 2.4fr 0.5fr 0.7fr 0.7fr 0.7fr 32px', gap:8, padding:'8px 0', borderBottom:'1px solid #eef7ee', alignItems:'center'}}>
-                <input
-                  value={res.label} placeholder="e.g. AI training"
-                  onChange={e => updateComputeLine(res.id, 'label', e.target.value)}
-                  style={{padding:'6px 10px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:13}}
-                />
-                <div>
-                  <select value={res.instance} onChange={e => updateComputeLine(res.id, 'instance', e.target.value)} style={{width:'100%', padding:'6px 8px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:12}}>
-                    {Object.entries(CLOUD_INSTANCES).map(([name]) => <option key={name}>{name}</option>)}
-                  </select>
-                  {res.instance === 'Custom (enter watts)' && (
-                    <input type="number" min="0" value={res.customWatt} placeholder="Watts" onChange={e => updateComputeLine(res.id, 'customWatt', e.target.value)} style={{marginTop:4, width:'100%', padding:'4px 8px', borderRadius:8, border:'1px solid #c8e6c9', fontSize:12}}/>
-                  )}
-                  <div style={{fontSize:10, color:'#607d66', marginTop:2}}>{CLOUD_INSTANCES[res.instance]?.desc}</div>
-                </div>
-                <input type="number" min="0" value={res.count} onChange={e => updateComputeLine(res.id, 'count', e.target.value)} style={{padding:'6px 8px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:13, textAlign:'center'}}/>
-                <input type="number" min="0" max="744" value={res.hoursPerMonth} onChange={e => updateComputeLine(res.id, 'hoursPerMonth', e.target.value)} style={{padding:'6px 8px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:13, textAlign:'center'}}/>
-                <span style={{fontWeight:700, color:'#263238', fontSize:13}}>{fmtKwh(res.pueKwh)}</span>
-                <span style={{fontWeight:700, color:'#c62828', fontSize:13}}>{fmtCo2(res.co2)}</span>
-                <button onClick={() => removeComputeLine(res.id)} title="Remove" style={{background:'none', color:'#aaa', padding:4, borderRadius:8, boxShadow:'none', lineHeight:1}}>
-                  <Trash2 style={{width:15,height:15}}/>
-                </button>
-              </div>
-            ))}
-
-            <button onClick={addComputeLine} style={{marginTop:12, background:'#e8f5e9', color:'#2E7D32', boxShadow:'none', border:'1px dashed #a5d6a7', padding:'8px 16px', fontSize:13, display:'flex', alignItems:'center', gap:6}}>
-              <Plus style={{width:15,height:15}}/> Add compute workload
-            </button>
-          </div>
-
-          {/* ── Storage ── */}
-          <div className="inputSummary" style={{marginBottom:20}}>
-            <h2 style={{marginTop:0, marginBottom:14, color:'#1b5e20', display:'flex', alignItems:'center', gap:8}}><Database style={{width:20,height:20}}/> Storage</h2>
-            <p className="note" style={{marginBottom:12}}>Enter provisioned TB. Energy is calculated for 720 h/month regardless of access pattern.</p>
-
-            <div style={{display:'grid', gridTemplateColumns:'1.4fr 2fr 0.8fr 0.8fr 0.8fr 32px', gap:8, padding:'0 0 6px', borderBottom:'1px solid #c8e6c9', fontSize:11, fontWeight:700, color:'#607d66'}}>
-              <span>Label</span><span>Storage type</span><span>TB</span><span>kWh/mo</span><span>kgCO₂e/mo</span><span/>
-            </div>
-
-            {cloudResult.storageResults.map((res) => (
-              <div key={res.id} style={{display:'grid', gridTemplateColumns:'1.4fr 2fr 0.8fr 0.8fr 0.8fr 32px', gap:8, padding:'8px 0', borderBottom:'1px solid #eef7ee', alignItems:'center'}}>
-                <input
-                  value={res.label} placeholder="e.g. PACS archive"
-                  onChange={e => updateStorageLine(res.id, 'label', e.target.value)}
-                  style={{padding:'6px 10px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:13}}
-                />
-                <select value={res.type} onChange={e => updateStorageLine(res.id, 'type', e.target.value)} style={{padding:'6px 8px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:12}}>
-                  {Object.keys(STORAGE_WH_PER_TB_HR).map(t => <option key={t}>{t}</option>)}
-                </select>
-                <input type="number" min="0" step="0.1" value={res.tb} onChange={e => updateStorageLine(res.id, 'tb', e.target.value)} style={{padding:'6px 8px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:13, textAlign:'center'}}/>
-                <span style={{fontWeight:700, color:'#263238', fontSize:13}}>{fmtKwh(res.pueKwh)}</span>
-                <span style={{fontWeight:700, color:'#c62828', fontSize:13}}>{fmtCo2(res.co2)}</span>
-                <button onClick={() => removeStorageLine(res.id)} title="Remove" style={{background:'none', color:'#aaa', padding:4, borderRadius:8, boxShadow:'none', lineHeight:1}}>
-                  <Trash2 style={{width:15,height:15}}/>
-                </button>
-              </div>
-            ))}
-
-            <button onClick={addStorageLine} style={{marginTop:12, background:'#e8f5e9', color:'#2E7D32', boxShadow:'none', border:'1px dashed #a5d6a7', padding:'8px 16px', fontSize:13, display:'flex', alignItems:'center', gap:6}}>
-              <Plus style={{width:15,height:15}}/> Add storage
-            </button>
-          </div>
-
-          {/* ── Networking ── */}
-          <div className="inputSummary" style={{marginBottom:28}}>
-            <h2 style={{marginTop:0, marginBottom:14, color:'#1b5e20', display:'flex', alignItems:'center', gap:8}}><Wifi style={{width:20,height:20}}/> Data transfer</h2>
-            <div style={{display:'flex', gap:24, flexWrap:'wrap', alignItems:'flex-end'}}>
-              <label style={{maxWidth:220}}>
-                Outbound data transfer (GB / month)
-                <input type="number" min="0" value={cloudTracker.networkingGb} onChange={e => setCloud('networkingGb', e.target.value)} placeholder="e.g. 500"/>
-              </label>
-              <div style={{paddingBottom:8}}>
-                <span style={{fontWeight:700, color:'#263238'}}>{fmtKwh(cloudResult.netKwh)}</span>
-                <span style={{color:'#607d66', fontSize:13}}> → </span>
-                <span style={{fontWeight:700, color:'#c62828'}}>{fmtCo2(cloudResult.netCo2)}</span>
-              </div>
-            </div>
-            <p className="note" style={{marginTop:8}}>0.001 kWh/GB fixed-line data centre average (Aslan et al. 2018). Excludes last-mile and end-user device energy.</p>
-          </div>
-
-          {/* ── Results cards ── */}
-          <h2>Monthly totals</h2>
-          <div className="cards" style={{marginBottom:28}}>
-            <section className="card" style={{gridColumn:'span 2'}}>
-              <div className="cardHead"><Zap/><span>Total energy / month</span></div>
-              <b>{fmtKwh(cloudResult.totalKwh)}</b>
-              <p>Compute {fmtKwh(cloudResult.totalComputeKwh)} · Storage {fmtKwh(cloudResult.totalStorageKwh)} · Network {fmtKwh(cloudResult.netKwh)}</p>
-            </section>
-            <section className="card" style={{gridColumn:'span 2'}}>
-              <div className="cardHead"><Leaf/><span>Total CO₂e / month</span></div>
-              <b style={{color: cloudResult.totalCo2 > 0 ? '#c62828' : '#2E7D32'}}>{fmtCo2(cloudResult.totalCo2)}</b>
-              <p>At {cloudResult.ci} kgCO₂e/kWh effective CI · PUE {cloudResult.pue}</p>
-            </section>
-            <Card icon={<Server/>} title="Compute" value={fmtKwh(cloudResult.totalComputeKwh)} sub={`${fmtCo2(cloudResult.computeResults.reduce((s,r)=>s+r.co2,0))} · ${cloudResult.computeResults.length} workload${cloudResult.computeResults.length!==1?'s':''}`}/>
-            <Card icon={<HardDrive/>} title="Storage" value={fmtKwh(cloudResult.totalStorageKwh)} sub={`${fmtCo2(cloudResult.storageResults.reduce((s,r)=>s+r.co2,0))} · ${cloudResult.storageResults.reduce((s,r)=>s+(parseFloat(r.tb)||0),0).toFixed(1)} TB`}/>
-            <Card icon={<Wifi/>} title="Data transfer" value={`${cloudResult.netGb.toLocaleString()} GB`} sub={`${fmtKwh(cloudResult.netKwh)} · ${fmtCo2(cloudResult.netCo2)}`}/>
-            <Card icon={<TreePine/>} title="Trees to offset" value={Math.round(cloudResult.totalCo2 / 21).toLocaleString()} sub="Trees growing for 1 year to absorb this CO₂ at ~21 kgCO₂/yr each."/>
-          </div>
-
-          {/* ── Optimisation ── */}
-          <section className="aiSection" style={{marginBottom:28}}>
-            <h2 style={{marginBottom:8, display:'flex', alignItems:'center', gap:8}}><Globe style={{color:'#2E7D32'}}/> Regional optimisation</h2>
             <p className="note" style={{marginBottom:16}}>
-              Same workload, different grid. Moving to a lower-carbon region costs nothing in compute but can cut operational CO₂ dramatically.
-              {!cloudResult.isBestRegion && <> Best in {cloudTracker.provider}: <strong>{cloudResult.bestSame.name}</strong> → saves <strong style={{color:'#2E7D32'}}>{cloudResult.bestSame.saving}%</strong> ({fmtCo2(cloudResult.bestSame.co2)}/mo vs {fmtCo2(cloudResult.totalCo2)}/mo).</>}
-              {cloudResult.isBestRegion && <> <strong>You are already in the lowest-carbon region for {cloudTracker.provider}.</strong></>}
+              Workload-by-workload cloud carbon — compute, storage, and data transfer — for the model configured above.
+              Training (amortised) and inference are seeded automatically from the AI settings; add your own storage, network, and extra compute below.
+              Inspired by <a href="https://www.cloudcarbonfootprint.org/" style={{color:'#2E7D32'}} target="_blank" rel="noreferrer">Cloud Carbon Footprint</a>.
             </p>
 
-            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:12}}>
-              {cloudResult.crossProvider.map((row, i) => {
-                const isCurrentProv = row.isCurrent;
-                const isBest = i === 0;
-                return (
-                  <div key={row.provider} style={{
-                    background: isBest ? '#e8f5e9' : isCurrentProv ? '#f5f5f5' : 'white',
-                    border: isBest ? '2px solid #2E7D32' : isCurrentProv ? '2px solid #90a4ae' : '1px solid #e0e0e0',
-                    borderRadius:16, padding:'16px 20px',
-                  }}>
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
-                      <span style={{fontWeight:700, color: isBest ? '#1b5e20' : '#263238', fontSize:14}}>
-                        {isBest && '★ '}{row.label}
-                        {isCurrentProv && <span className="badge" style={{marginLeft:8}}>current</span>}
-                      </span>
-                      <span style={{fontWeight:900, color: isBest ? '#1b5e20' : '#c62828', fontSize:18}}>{fmtCo2(row.co2Est)}</span>
-                    </div>
-                    <div style={{fontSize:12, color:'#607d66'}}>Best region: <strong>{row.bestRegion}</strong></div>
-                    <div style={{fontSize:12, color:'#607d66'}}>Grid CI: {row.ci} kgCO₂e/kWh · PUE {row.pue}</div>
-                    {cloudResult.totalCo2 > 0 && row.saving !== 0 && (
-                      <div style={{marginTop:8, fontWeight:700, color: row.saving > 0 ? '#2E7D32' : '#c62828', fontSize:13}}>
-                        {row.saving > 0 ? `−${row.saving}% vs current` : `+${Math.abs(row.saving)}% vs current`}
-                      </div>
-                    )}
-                    {row.saving === 0 && isCurrentProv && (
-                      <div style={{marginTop:8, fontSize:12, color:'#607d66'}}>— current setup</div>
-                    )}
-                  </div>
-                );
-              })}
+            {/* Provider & region (shared with AI lifecycle) */}
+            <div className="inputSummary" style={{marginBottom:20}}>
+              <h2 style={{marginTop:0, marginBottom:14, color:'#1b5e20'}}>Provider &amp; region <span style={{fontWeight:400,fontSize:12,color:'#607d66'}}>— shared with the AI dashboard above</span></h2>
+              <div className="grid grid3">
+                <label>
+                  Cloud provider
+                  <select value={scen.cloudProvider} onChange={e=>setCloudProvider(e.target.value)}>
+                    {Object.keys(CLOUD_REGIONS).map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Region <span style={{fontWeight:400, fontSize:12, color:'#607d66'}}>— sets grid carbon intensity</span>
+                  <select value={scen.cloudRegion} onChange={e => setS('cloudRegion', e.target.value)}>
+                    {Object.entries(CLOUD_REGIONS[scen.cloudProvider]?.regions ?? {}).map(([name, rci]) => (
+                      <option key={name} value={name}>{name} — {rci} kgCO₂e/kWh</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Renewable energy (%)
+                  <input type="number" min="0" max="100" value={cloudTracker.renewablePct} onChange={e => setCloud('renewablePct', e.target.value)} placeholder="0–100"/>
+                </label>
+              </div>
+              <p className="note" style={{marginTop:8}}>
+                Effective CI: <strong>{cloudResult.ci} kgCO₂e/kWh</strong>
+                {cloudResult.renewable > 0 && <> (after {cloudResult.renewable}% renewable adjustment)</>}.
+                {' '}PUE: <strong>{cloudResult.pue}</strong> ({scen.cloudProvider} {scen.cloudProvider === 'Google Cloud' ? '— industry-leading efficiency' : 'global fleet average'}).
+                {' '}Changing region here also updates the AI Carbon tab above.
+              </p>
             </div>
+
+            {/* Compute workloads */}
+            <div className="inputSummary" style={{marginBottom:20}}>
+              <h2 style={{marginTop:0, marginBottom:14, color:'#1b5e20', display:'flex', alignItems:'center', gap:8}}><Server style={{width:20,height:20}}/> Compute workloads</h2>
+              <p className="note" style={{marginBottom:12}}>AI training &amp; inference (green) are derived from the model config above. Add other instances separately — hours/month max 744, GPU at 100% / CPU at 50% utilisation.</p>
+
+              <div style={{display:'grid', gridTemplateColumns:'1.4fr 2.4fr 0.5fr 0.7fr 0.7fr 0.7fr 32px', gap:8, padding:'0 0 6px', borderBottom:'1px solid #c8e6c9', fontSize:11, fontWeight:700, color:'#607d66'}}>
+                <span>Workload label</span><span>Instance type</span><span>Count</span><span>h/month</span><span>kWh/mo</span><span>kgCO₂e/mo</span><span/>
+              </div>
+
+              {cloudResult.computeResults.map((res) => res.locked ? (
+                <div key={res.id} style={{display:'grid', gridTemplateColumns:'1.4fr 2.4fr 0.5fr 0.7fr 0.7fr 0.7fr 32px', gap:8, padding:'8px 0', borderBottom:'1px solid #eef7ee', alignItems:'center', background:'#f3faf3'}}>
+                  <span style={{fontWeight:700, color:'#1b5e20', fontSize:13, display:'flex', alignItems:'center', gap:6}}><Brain style={{width:14,height:14}}/>{res.label}</span>
+                  <span style={{fontSize:12, color:'#607d66'}}>From AI model config above</span>
+                  <span style={{textAlign:'center', color:'#90a4ae'}}>—</span>
+                  <span style={{textAlign:'center', color:'#90a4ae'}}>—</span>
+                  <span style={{fontWeight:700, color:'#263238', fontSize:13}}>{fmtKwh(res.pueKwh)}</span>
+                  <span style={{fontWeight:700, color:'#c62828', fontSize:13}}>{fmtCo2(res.co2)}</span>
+                  <span/>
+                </div>
+              ) : (
+                <div key={res.id} style={{display:'grid', gridTemplateColumns:'1.4fr 2.4fr 0.5fr 0.7fr 0.7fr 0.7fr 32px', gap:8, padding:'8px 0', borderBottom:'1px solid #eef7ee', alignItems:'center'}}>
+                  <input value={res.label} placeholder="e.g. preprocessing" onChange={e => updateComputeLine(res.id, 'label', e.target.value)} style={{padding:'6px 10px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:13}}/>
+                  <div>
+                    <select value={res.instance} onChange={e => updateComputeLine(res.id, 'instance', e.target.value)} style={{width:'100%', padding:'6px 8px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:12}}>
+                      {Object.entries(CLOUD_INSTANCES).map(([name]) => <option key={name}>{name}</option>)}
+                    </select>
+                    {res.instance === 'Custom (enter watts)' && (
+                      <input type="number" min="0" value={res.customWatt} placeholder="Watts" onChange={e => updateComputeLine(res.id, 'customWatt', e.target.value)} style={{marginTop:4, width:'100%', padding:'4px 8px', borderRadius:8, border:'1px solid #c8e6c9', fontSize:12}}/>
+                    )}
+                    <div style={{fontSize:10, color:'#607d66', marginTop:2}}>{CLOUD_INSTANCES[res.instance]?.desc}</div>
+                  </div>
+                  <input type="number" min="0" value={res.count} onChange={e => updateComputeLine(res.id, 'count', e.target.value)} style={{padding:'6px 8px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:13, textAlign:'center'}}/>
+                  <input type="number" min="0" max="744" value={res.hoursPerMonth} onChange={e => updateComputeLine(res.id, 'hoursPerMonth', e.target.value)} style={{padding:'6px 8px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:13, textAlign:'center'}}/>
+                  <span style={{fontWeight:700, color:'#263238', fontSize:13}}>{fmtKwh(res.pueKwh)}</span>
+                  <span style={{fontWeight:700, color:'#c62828', fontSize:13}}>{fmtCo2(res.co2)}</span>
+                  <button onClick={() => removeComputeLine(res.id)} title="Remove" style={{background:'none', color:'#aaa', padding:4, borderRadius:8, boxShadow:'none', lineHeight:1}}>
+                    <Trash2 style={{width:15,height:15}}/>
+                  </button>
+                </div>
+              ))}
+
+              <button onClick={addComputeLine} style={{marginTop:12, background:'#e8f5e9', color:'#2E7D32', boxShadow:'none', border:'1px dashed #a5d6a7', padding:'8px 16px', fontSize:13, display:'flex', alignItems:'center', gap:6}}>
+                <Plus style={{width:15,height:15}}/> Add compute workload
+              </button>
+            </div>
+
+            {/* Storage */}
+            <div className="inputSummary" style={{marginBottom:20}}>
+              <h2 style={{marginTop:0, marginBottom:14, color:'#1b5e20', display:'flex', alignItems:'center', gap:8}}><Database style={{width:20,height:20}}/> Storage</h2>
+              <p className="note" style={{marginBottom:12}}>Enter provisioned TB. Energy is calculated for 720 h/month regardless of access pattern.</p>
+
+              <div style={{display:'grid', gridTemplateColumns:'1.4fr 2fr 0.8fr 0.8fr 0.8fr 32px', gap:8, padding:'0 0 6px', borderBottom:'1px solid #c8e6c9', fontSize:11, fontWeight:700, color:'#607d66'}}>
+                <span>Label</span><span>Storage type</span><span>TB</span><span>kWh/mo</span><span>kgCO₂e/mo</span><span/>
+              </div>
+
+              {cloudResult.storageResults.map((res) => (
+                <div key={res.id} style={{display:'grid', gridTemplateColumns:'1.4fr 2fr 0.8fr 0.8fr 0.8fr 32px', gap:8, padding:'8px 0', borderBottom:'1px solid #eef7ee', alignItems:'center'}}>
+                  <input value={res.label} placeholder="e.g. PACS archive" onChange={e => updateStorageLine(res.id, 'label', e.target.value)} style={{padding:'6px 10px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:13}}/>
+                  <select value={res.type} onChange={e => updateStorageLine(res.id, 'type', e.target.value)} style={{padding:'6px 8px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:12}}>
+                    {Object.keys(STORAGE_WH_PER_TB_HR).map(t => <option key={t}>{t}</option>)}
+                  </select>
+                  <input type="number" min="0" step="0.1" value={res.tb} onChange={e => updateStorageLine(res.id, 'tb', e.target.value)} style={{padding:'6px 8px', borderRadius:10, border:'1px solid #c8e6c9', fontSize:13, textAlign:'center'}}/>
+                  <span style={{fontWeight:700, color:'#263238', fontSize:13}}>{fmtKwh(res.pueKwh)}</span>
+                  <span style={{fontWeight:700, color:'#c62828', fontSize:13}}>{fmtCo2(res.co2)}</span>
+                  <button onClick={() => removeStorageLine(res.id)} title="Remove" style={{background:'none', color:'#aaa', padding:4, borderRadius:8, boxShadow:'none', lineHeight:1}}>
+                    <Trash2 style={{width:15,height:15}}/>
+                  </button>
+                </div>
+              ))}
+
+              <button onClick={addStorageLine} style={{marginTop:12, background:'#e8f5e9', color:'#2E7D32', boxShadow:'none', border:'1px dashed #a5d6a7', padding:'8px 16px', fontSize:13, display:'flex', alignItems:'center', gap:6}}>
+                <Plus style={{width:15,height:15}}/> Add storage
+              </button>
+            </div>
+
+            {/* Networking */}
+            <div className="inputSummary" style={{marginBottom:28}}>
+              <h2 style={{marginTop:0, marginBottom:14, color:'#1b5e20', display:'flex', alignItems:'center', gap:8}}><Wifi style={{width:20,height:20}}/> Data transfer</h2>
+              <div style={{display:'flex', gap:24, flexWrap:'wrap', alignItems:'flex-end'}}>
+                <label style={{maxWidth:220}}>
+                  Outbound data transfer (GB / month)
+                  <input type="number" min="0" value={cloudTracker.networkingGb} onChange={e => setCloud('networkingGb', e.target.value)} placeholder="e.g. 500"/>
+                </label>
+                <div style={{paddingBottom:8}}>
+                  <span style={{fontWeight:700, color:'#263238'}}>{fmtKwh(cloudResult.netKwh)}</span>
+                  <span style={{color:'#607d66', fontSize:13}}> → </span>
+                  <span style={{fontWeight:700, color:'#c62828'}}>{fmtCo2(cloudResult.netCo2)}</span>
+                </div>
+              </div>
+              <p className="note" style={{marginTop:8}}>0.001 kWh/GB fixed-line data centre average (Aslan et al. 2018). Excludes last-mile and end-user device energy.</p>
+            </div>
+
+            {/* Totals */}
+            <h2>Cloud monthly totals</h2>
+            <div className="cards" style={{marginBottom:28}}>
+              <section className="card" style={{gridColumn:'span 2'}}>
+                <div className="cardHead"><Zap/><span>Total energy / month</span></div>
+                <b>{fmtKwh(cloudResult.totalKwh)}</b>
+                <p>Compute {fmtKwh(cloudResult.totalComputeKwh)} · Storage {fmtKwh(cloudResult.totalStorageKwh)} · Network {fmtKwh(cloudResult.netKwh)}</p>
+              </section>
+              <section className="card" style={{gridColumn:'span 2'}}>
+                <div className="cardHead"><Leaf/><span>Total CO₂e / month</span></div>
+                <b style={{color: cloudResult.totalCo2 > 0 ? '#c62828' : '#2E7D32'}}>{fmtCo2(cloudResult.totalCo2)}</b>
+                <p>At {cloudResult.ci} kgCO₂e/kWh effective CI · PUE {cloudResult.pue}</p>
+              </section>
+              <Card icon={<Server/>} title="Compute" value={fmtKwh(cloudResult.totalComputeKwh)} sub={`${fmtCo2(cloudResult.computeResults.reduce((s,r)=>s+r.co2,0))} · ${cloudResult.computeResults.length} workload${cloudResult.computeResults.length!==1?'s':''}`}/>
+              <Card icon={<HardDrive/>} title="Storage" value={fmtKwh(cloudResult.totalStorageKwh)} sub={`${fmtCo2(cloudResult.storageResults.reduce((s,r)=>s+r.co2,0))} · ${cloudResult.storageResults.reduce((s,r)=>s+(parseFloat(r.tb)||0),0).toFixed(1)} TB`}/>
+              <Card icon={<Wifi/>} title="Data transfer" value={`${cloudResult.netGb.toLocaleString()} GB`} sub={`${fmtKwh(cloudResult.netKwh)} · ${fmtCo2(cloudResult.netCo2)}`}/>
+              <Card icon={<TreePine/>} title="Trees to offset" value={Math.round(cloudResult.totalCo2 / 21).toLocaleString()} sub="Trees growing for 1 year to absorb this CO₂ at ~21 kgCO₂/yr each."/>
+            </div>
+
+            {/* Regional optimisation */}
+            <section className="aiSection" style={{marginBottom:20}}>
+              <h2 style={{marginBottom:8, display:'flex', alignItems:'center', gap:8}}><Globe style={{color:'#2E7D32'}}/> Regional optimisation</h2>
+              <p className="note" style={{marginBottom:16}}>
+                Same workload, different grid. Moving to a lower-carbon region costs nothing in compute but can cut operational CO₂ dramatically.
+                {!cloudResult.isBestRegion && <> Best in {scen.cloudProvider}: <strong>{cloudResult.bestSame.name}</strong> → saves <strong style={{color:'#2E7D32'}}>{cloudResult.bestSame.saving}%</strong> ({fmtCo2(cloudResult.bestSame.co2)}/mo vs {fmtCo2(cloudResult.totalCo2)}/mo).</>}
+                {cloudResult.isBestRegion && <> <strong>You are already in the lowest-carbon region for {scen.cloudProvider}.</strong></>}
+              </p>
+
+              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:12}}>
+                {cloudResult.crossProvider.map((row, i) => {
+                  const isCurrentProv = row.isCurrent;
+                  const isBest = i === 0;
+                  return (
+                    <div key={row.provider} style={{
+                      background: isBest ? '#e8f5e9' : isCurrentProv ? '#f5f5f5' : 'white',
+                      border: isBest ? '2px solid #2E7D32' : isCurrentProv ? '2px solid #90a4ae' : '1px solid #e0e0e0',
+                      borderRadius:16, padding:'16px 20px',
+                    }}>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
+                        <span style={{fontWeight:700, color: isBest ? '#1b5e20' : '#263238', fontSize:14}}>
+                          {isBest && '★ '}{row.label}
+                          {isCurrentProv && <span className="badge" style={{marginLeft:8}}>current</span>}
+                        </span>
+                        <span style={{fontWeight:900, color: isBest ? '#1b5e20' : '#c62828', fontSize:18}}>{fmtCo2(row.co2Est)}</span>
+                      </div>
+                      <div style={{fontSize:12, color:'#607d66'}}>Best region: <strong>{row.bestRegion}</strong></div>
+                      <div style={{fontSize:12, color:'#607d66'}}>Grid CI: {row.ci} kgCO₂e/kWh · PUE {row.pue}</div>
+                      {cloudResult.totalCo2 > 0 && row.saving !== 0 && (
+                        <div style={{marginTop:8, fontWeight:700, color: row.saving > 0 ? '#2E7D32' : '#c62828', fontSize:13}}>
+                          {row.saving > 0 ? `−${row.saving}% vs current` : `+${Math.abs(row.saving)}% vs current`}
+                        </div>
+                      )}
+                      {row.saving === 0 && isCurrentProv && (
+                        <div style={{marginTop:8, fontSize:12, color:'#607d66'}}>— current setup</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <p className="note" style={{borderTop:'1px solid #c8e6c9', paddingTop:16}}>
+              Sources: Cloud Carbon Footprint methodology (cloudcarbonfootprint.org); Electricity Maps 2023 annual averages;
+              AWS 2023 / Azure 2023 / GCP 2023 sustainability reports; Masanet et al. 2020 (Science); Aslan et al. 2018.
+              Grid CI values are annual averages — use real-time data from Electricity Maps or provider carbon dashboards for hourly accuracy.
+            </p>
           </section>
 
-          <p className="note" style={{borderTop:'1px solid #c8e6c9', paddingTop:16}}>
-            Sources: Cloud Carbon Footprint methodology (cloudcarbonfootprint.org); Electricity Maps 2023 annual averages;
-            AWS 2023 / Azure 2023 / GCP 2023 sustainability reports; Masanet et al. 2020 (Science); Aslan et al. 2018.
-            Grid CI values are annual averages — use real-time data from Electricity Maps or provider carbon dashboards for hourly accuracy.
-          </p>
         </main>
       )}
 
