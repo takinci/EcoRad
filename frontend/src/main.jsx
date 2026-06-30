@@ -819,6 +819,17 @@ function Card({title, value, sub, icon, style}) {
   );
 }
 
+// CEDARS Rating badge — `leaves` filled (coloured) out of 5, the rest greyed.
+function LeafRating({leaves, size = 22, color = '#2E7D32'}) {
+  return (
+    <span style={{display:'inline-flex', gap:3, alignItems:'center'}} aria-label={`${leaves} of 5 leaves`}>
+      {[1,2,3,4,5].map(i => (
+        <Leaf key={i} size={size} style={{color: i <= leaves ? color : '#cfd8dc'}} fill={i <= leaves ? color : 'none'}/>
+      ))}
+    </span>
+  );
+}
+
 function Sel({label: lbl, value, options, onChange}) {
   return (
     <label>
@@ -1027,35 +1038,36 @@ function downloadCloudCSV(result, tracker) {
   URL.revokeObjectURL(url);
 }
 
-// EU Energy Label A–G colour palette (Regulation EU 2021/341 rescaled scheme).
-// `color` = dark readable version used for text on light backgrounds.
-// `badgeColor` = vivid EU colour used for the letter badge / border.
-// `letterColor` = text colour inside the badge (white, or dark for light badges C/D).
-const AI_TIERS = [
-  {tier:'A', label:'Very low carbon',  max:5,        color:'#005a2b', bg:'#e6f4ed', badgeColor:'#00A14B', letterColor:'white'},
-  {tier:'B', label:'Low carbon',       max:50,       color:'#2b6e2c', bg:'#dcedc8', badgeColor:'#52B153', letterColor:'white'},
-  {tier:'C', label:'Moderate',         max:300,      color:'#6b7200', bg:'#f5f9e0', badgeColor:'#C8D400', letterColor:'#263238'},
-  {tier:'D', label:'Above average',    max:1000,     color:'#7a5800', bg:'#fefde6', badgeColor:'#F9CB00', letterColor:'#263238'},
-  {tier:'E', label:'High',             max:5000,     color:'#8a4a00', bg:'#fff3e0', badgeColor:'#F49200', letterColor:'white'},
-  {tier:'F', label:'Very high',        max:20000,    color:'#9b3510', bg:'#fde8e0', badgeColor:'#E85118', letterColor:'white'},
-  {tier:'G', label:'Extreme',          max:Infinity, color:'#9b1515', bg:'#ffebee', badgeColor:'#E52425', letterColor:'white'},
+// ── CEDARS Score & Rating ─────────────────────────────────────────────────────
+// Standardised environmental disclosure, after Energy Star / EU Energy Label A–G
+// (Regulation EU 2021/341): a continuous 0–100 Score paired with a categorical
+// 1–5 leaf Rating. Higher Score = lower footprint. Rating bands per Table 3.
+const CEDARS_RATINGS = [
+  {leaves:5, min:90, label:'Very low footprint',      color:'#1b5e20', bg:'#e6f4ed', desc:'Carbon-aware design, clean energy, efficient hardware lifecycle.'},
+  {leaves:4, min:75, label:'Low footprint',           color:'#2b6e2c', bg:'#eaf3d8', desc:'Low footprint with good mitigation.'},
+  {leaves:3, min:60, label:'Moderate footprint',      color:'#7a6a00', bg:'#fbf6d6', desc:'Moderate footprint; clear room to improve.'},
+  {leaves:2, min:40, label:'Above-average footprint', color:'#8a4a00', bg:'#fdeccc', desc:'Above-average footprint; mitigation recommended.'},
+  {leaves:1, min:0,  label:'High footprint',          color:'#9b1515', bg:'#fbe0e0', desc:'High footprint / limited mitigation.'},
 ];
-
-const DEPT_TIERS = [
-  {tier:'A', label:'Excellent',      max:0.3,      color:'#005a2b', bg:'#e6f4ed', badgeColor:'#00A14B', letterColor:'white'},
-  {tier:'B', label:'Very good',      max:0.8,      color:'#2b6e2c', bg:'#dcedc8', badgeColor:'#52B153', letterColor:'white'},
-  {tier:'C', label:'Good',           max:1.8,      color:'#6b7200', bg:'#f5f9e0', badgeColor:'#C8D400', letterColor:'#263238'},
-  {tier:'D', label:'Average',        max:3.5,      color:'#7a5800', bg:'#fefde6', badgeColor:'#F9CB00', letterColor:'#263238'},
-  {tier:'E', label:'Below average',  max:6.0,      color:'#8a4a00', bg:'#fff3e0', badgeColor:'#F49200', letterColor:'white'},
-  {tier:'F', label:'Poor',           max:10.0,     color:'#9b3510', bg:'#fde8e0', badgeColor:'#E85118', letterColor:'white'},
-  {tier:'G', label:'Very poor',      max:Infinity, color:'#9b1515', bg:'#ffebee', badgeColor:'#E52425', letterColor:'white'},
-];
+function cedarsRating(score) {
+  return CEDARS_RATINGS.find(r => score >= r.min) ?? CEDARS_RATINGS[CEDARS_RATINGS.length - 1];
+}
+// Footprint (kgCO₂e) → 0–100 Score on a log scale: lo → 100 (greenest), hi → 0 (worst).
+// Anchors are candidate values (TBD), aligned with published reference footprints.
+function cedarsScore(value, lo, hi) {
+  const x = Math.max(parseFloat(value) || 0, 1e-6);
+  if (x <= lo) return 100;
+  if (x >= hi) return 0;
+  return Math.round(100 * (Math.log10(hi) - Math.log10(x)) / (Math.log10(hi) - Math.log10(lo)));
+}
+const CEDARS_AI_LO = 1,   CEDARS_AI_HI = 20000;   // total training kgCO₂e: ~1 kg → 100, 20 t → 0
+const CEDARS_DEPT_LO = 0.1, CEDARS_DEPT_HI = 20;  // kgCO₂e per imaging study: 0.1 → 100, 20 → 0
 
 function generateDeptText(d) {
   if (!d.annualStudies) return '';
   return (
     `Environmental footprint. ${d.deptName}${d.hospitalName ? ` (${d.hospitalName})` : ''} consumed an estimated ${d.annualKwh.toLocaleString()} kWh of electricity in the reporting period, generating approximately ${d.totalAnnualCo2.toLocaleString()} kgCO₂e (effective carbon intensity: ${d.effectiveCi} kgCO₂e/kWh; renewable energy: ${d.renewablePct}%; grid region: ${d.region}). ` +
-    `Across ${d.annualStudies.toLocaleString()} imaging studies, the carbon intensity per study was ${d.co2PerStudy} kgCO₂e/study (${d.kwhPerStudy} kWh/study), corresponding to EU Energy Rating ${d.tier} (${d.tierLabel}) on the A–G scale modelled after EU Regulation 2021/341.` +
+    `Across ${d.annualStudies.toLocaleString()} imaging studies, the carbon intensity per study was ${d.co2PerStudy} kgCO₂e/study (${d.kwhPerStudy} kWh/study), corresponding to a CEDARS Score of ${d.score}/100 (CEDARS Rating: ${d.leaves}/5 leaves — ${d.ratingLabel}).` +
     (d.interventionCount > 0 ? ` The department has implemented ${d.interventionCount} sustainability intervention${d.interventionCount > 1 ? 's' : ''}, with an estimated energy saving potential of ${d.annualKwhSaving.toLocaleString()} kWh/yr (${d.co2Saving} kgCO₂e/yr).` : '') +
     ` Sustainability metrics were estimated using CEDARS (${d.date}), informed by the framework of Vosshenrich R et al. (Curr Opin Urol 2024, DOI: 10.1097/MOU.0000000000001337) and McKee BJ et al. (Radiology 2024, DOI: 10.1148/radiol.240219).`
   );
@@ -1080,7 +1092,7 @@ function downloadDeptPNG(d) {
   ctx.scale(2, 2);
   ctx.fillStyle = '#ffffff';
   ctx.beginPath(); ctx.roundRect(0, 0, W, H, 14); ctx.fill();
-  ctx.strokeStyle = d.tierBadgeColor; ctx.lineWidth = 2;
+  ctx.strokeStyle = d.ratingColor; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.roundRect(1, 1, W-2, H-2, 13); ctx.stroke();
   ctx.fillStyle = '#1b5e20';
   ctx.beginPath(); ctx.roundRect(1, 1, W-2, HEADER_H, [13,13,0,0]); ctx.fill();
@@ -1090,19 +1102,20 @@ function downloadDeptPNG(d) {
   ctx.fillText(d.deptName, 16, 48);
   ctx.font = '10px sans-serif'; ctx.fillStyle = '#81C784';
   ctx.fillText(`${d.hospitalName ? d.hospitalName + ' \xb7 ' : ''}${d.region} \xb7 ${d.date}`, 16, 66);
-  ctx.fillStyle = d.tierBg;
+  ctx.fillStyle = d.ratingBg;
   ctx.fillRect(2, HEADER_H, W-4, TIER_H);
-  // EU Energy Label badge — solid-colour square with letter
-  ctx.fillStyle = d.tierBadgeColor;
-  ctx.beginPath(); ctx.roundRect(14, HEADER_H + 12, 60, 60, 8); ctx.fill();
-  ctx.font = 'bold 48px sans-serif'; ctx.fillStyle = d.tierLetterColor; ctx.textAlign = 'center';
-  ctx.fillText(d.tier, 44, HEADER_H + 58); ctx.textAlign = 'left';
-  ctx.font = 'bold 16px sans-serif'; ctx.fillStyle = d.tierColor;
-  ctx.fillText(`EU Rating ${d.tier} — ${d.tierLabel}`, 88, HEADER_H + 36);
-  ctx.font = '12px sans-serif'; ctx.fillStyle = '#263238';
-  ctx.fillText(`${d.co2PerStudy} kgCO₂e per imaging study`, 88, HEADER_H + 56);
-  ctx.font = '10px sans-serif'; ctx.fillStyle = '#607d66';
-  ctx.fillText('EU Energy Label A–G \xb7 Vosshenrich et al. 2024', 88, HEADER_H + 74);
+  // CEDARS Score (big number) + Rating (5 leaves)
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 40px sans-serif'; ctx.fillStyle = d.ratingColor;
+  ctx.fillText(String(d.score), 46, HEADER_H + 48);
+  ctx.font = 'bold 9px sans-serif';
+  ctx.fillText('CEDARS SCORE', 46, HEADER_H + 64);
+  ctx.textAlign = 'left';
+  for (let i = 0; i < 5; i++) { ctx.fillStyle = i < d.leaves ? d.ratingColor : '#cfd8dc'; ctx.font = '16px sans-serif'; ctx.fillText('●', 100 + i*16, HEADER_H + 30); }
+  ctx.font = 'bold 15px sans-serif'; ctx.fillStyle = d.ratingColor;
+  ctx.fillText(`${d.ratingLabel}`, 100, HEADER_H + 52);
+  ctx.font = '11px sans-serif'; ctx.fillStyle = '#263238';
+  ctx.fillText(`${d.co2PerStudy} kgCO₂e per imaging study`, 100, HEADER_H + 70);
   rows.forEach(([k, v], i) => {
     const y = HEADER_H + TIER_H + 4 + i * ROW_H;
     ctx.fillStyle = i%2===0 ? '#f1f8f1' : '#ffffff';
@@ -1116,7 +1129,7 @@ function downloadDeptPNG(d) {
   ctx.fillStyle = '#e8f5e9';
   ctx.beginPath(); ctx.roundRect(2, footerY, W-4, FOOTER_H, [0,0,11,11]); ctx.fill();
   ctx.fillStyle = '#2E7D32'; ctx.font = '10px sans-serif';
-  ctx.fillText(`CEDARS \xb7 ${d.date} \xb7 EU Energy Label A–G (EU 2021/341) \xb7 CC BY 4.0`, 14, footerY+18);
+  ctx.fillText(`CEDARS Score & Rating \xb7 ${d.date} \xb7 CC BY 4.0`, 14, footerY+18);
   canvas.toBlob(blob => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1148,6 +1161,8 @@ function generateEcoMarkdown(d) {
       'Monthly inference',
       `${d.inferStudies.toLocaleString()} studies · ${d.inferMonthlyKwh} kWh · ${d.inferCo2Month} kgCO₂e`,
     ]] : []),
+    ['**CEDARS Score**',         d.hasData ? `**${d.score} / 100**` : '—'],
+    ['**CEDARS Rating**',        d.hasData ? `**${d.leaves} / 5 leaves — ${d.ratingLabel}**` : '—'],
     ['Estimated with',           `CEDARS · ${d.date}`],
   ];
   return [
@@ -1177,15 +1192,15 @@ function downloadEcoPNG(d) {
     ['Water footprint (cooling)', `${d.waterLitres.toLocaleString()} L`],
     ...(d.hasInference ? [['Monthly inference', `${d.inferStudies.toLocaleString()} studies · ${d.inferMonthlyKwh} kWh`]] : []),
   ];
-  const ROW_H = 26, HEADER_H = 72, FOOTER_H = 28;
-  const H = HEADER_H + 4 + rows.length * ROW_H + 6 + FOOTER_H + 4;
+  const ROW_H = 26, HEADER_H = 72, RATING_H = 76, FOOTER_H = 28;
+  const H = HEADER_H + RATING_H + 4 + rows.length * ROW_H + 6 + FOOTER_H + 4;
   const canvas = document.createElement('canvas');
   canvas.width = W * 2; canvas.height = H * 2;
   const ctx = canvas.getContext('2d');
   ctx.scale(2, 2);
   ctx.fillStyle = '#ffffff';
   ctx.beginPath(); ctx.roundRect(0, 0, W, H, 14); ctx.fill();
-  ctx.strokeStyle = '#2E7D32'; ctx.lineWidth = 2;
+  ctx.strokeStyle = d.ratingColor; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.roundRect(1, 1, W - 2, H - 2, 13); ctx.stroke();
   ctx.fillStyle = '#1b5e20';
   ctx.beginPath(); ctx.roundRect(1, 1, W - 2, HEADER_H, [13, 13, 0, 0]); ctx.fill();
@@ -1195,8 +1210,20 @@ function downloadEcoPNG(d) {
   ctx.fillText(d.projectName, 16, 48);
   ctx.font = '10px sans-serif'; ctx.fillStyle = '#81C784';
   ctx.fillText(`AI/ML Training Report · Radiology · ${d.date}`, 16, 66);
+  // CEDARS Score + Rating band
+  ctx.fillStyle = d.ratingBg; ctx.fillRect(2, HEADER_H, W-4, RATING_H);
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 38px sans-serif'; ctx.fillStyle = d.ratingColor;
+  ctx.fillText(d.hasData ? String(d.score) : '—', 46, HEADER_H + 44);
+  ctx.font = 'bold 9px sans-serif'; ctx.fillText('CEDARS SCORE', 46, HEADER_H + 60);
+  ctx.textAlign = 'left';
+  for (let i = 0; i < 5; i++) { ctx.fillStyle = i < d.leaves ? d.ratingColor : '#cfd8dc'; ctx.font = '15px sans-serif'; ctx.fillText('●', 100 + i*15, HEADER_H + 28); }
+  ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = d.ratingColor;
+  ctx.fillText(d.ratingLabel, 100, HEADER_H + 50);
+  ctx.font = '10px sans-serif'; ctx.fillStyle = '#263238';
+  ctx.fillText(d.hasData ? `${d.trainCo2} kgCO₂e total training` : 'Enter training data above', 100, HEADER_H + 66);
   rows.forEach(([k, v], i) => {
-    const y = HEADER_H + 4 + i * ROW_H;
+    const y = HEADER_H + RATING_H + 4 + i * ROW_H;
     ctx.fillStyle = i % 2 === 0 ? '#f1f8f1' : '#ffffff';
     ctx.fillRect(2, y, W - 4, ROW_H);
     ctx.fillStyle = '#607d66'; ctx.font = '11px sans-serif';
@@ -1204,7 +1231,7 @@ function downloadEcoPNG(d) {
     ctx.fillStyle = '#263238'; ctx.font = 'bold 11px sans-serif';
     ctx.fillText(String(v), 210, y + 17);
   });
-  const footerY = HEADER_H + 4 + rows.length * ROW_H + 6;
+  const footerY = HEADER_H + RATING_H + 4 + rows.length * ROW_H + 6;
   ctx.fillStyle = '#e8f5e9';
   ctx.beginPath(); ctx.roundRect(2, footerY, W - 4, FOOTER_H, [0, 0, 11, 11]); ctx.fill();
   ctx.fillStyle = '#2E7D32'; ctx.font = '10px sans-serif';
@@ -1530,9 +1557,9 @@ function App() {
     const gpuLabel = ecoLabel.gpuModel === 'Custom (enter TDP below)'
       ? `Custom GPU (${ecoLabel.customTdpW || 300} W TDP)`
       : ecoLabel.gpuModel;
-    const aiTierObj = totalEnergyKwh > 0
-      ? (AI_TIERS.find(t => trainCo2 <= t.max) ?? AI_TIERS[AI_TIERS.length - 1])
-      : {tier:'—', label:'Enter data above', color:'#90a4ae', bg:'#f5f5f5', badgeColor:'#90a4ae', letterColor:'white'};
+    const hasData = totalEnergyKwh > 0;
+    const score = hasData ? cedarsScore(trainCo2, CEDARS_AI_LO, CEDARS_AI_HI) : null;
+    const rating = hasData ? cedarsRating(score) : null;
     return {
       projectName: ecoLabel.projectName || 'Untitled project',
       taskType: ecoLabel.taskType,
@@ -1546,8 +1573,9 @@ function App() {
       hasInference: inferStudies > 0 && inferKwhPerStudy > 0,
       inferMonthlyKwh, inferCo2Month, inferStudies: Math.round(inferStudies),
       energyMeasured: ecoLabel.energyMeasured,
-      tier: aiTierObj.tier, tierLabel: aiTierObj.label, tierColor: aiTierObj.color, tierBg: aiTierObj.bg,
-      tierBadgeColor: aiTierObj.badgeColor, tierLetterColor: aiTierObj.letterColor,
+      hasData, score,
+      leaves: rating?.leaves ?? 0, ratingLabel: rating?.label ?? 'Enter training data above',
+      ratingColor: rating?.color ?? '#90a4ae', ratingBg: rating?.bg ?? '#f5f5f5', ratingDesc: rating?.desc ?? '',
       date: new Date().toISOString().slice(0, 7),
     };
   }, [ecoLabel, settings.customCi]);
@@ -1561,9 +1589,9 @@ function App() {
     const totalAnnualCo2 = rnd(annualKwh * effectiveCi, 1);
     const co2PerStudy = annualStudies > 0 ? rnd(totalAnnualCo2 / annualStudies, 3) : 0;
     const kwhPerStudy = annualStudies > 0 ? rnd(annualKwh / annualStudies, 2) : 0;
-    const tierObj = annualStudies > 0
-      ? (DEPT_TIERS.find(t => co2PerStudy <= t.max) ?? DEPT_TIERS[DEPT_TIERS.length - 1])
-      : {tier:'—', label:'Enter data above', color:'#90a4ae', bg:'#f5f5f5', badgeColor:'#90a4ae', letterColor:'white'};
+    const hasData = annualStudies > 0;
+    const score = hasData ? cedarsScore(co2PerStudy, CEDARS_DEPT_LO, CEDARS_DEPT_HI) : null;
+    const rating = hasData ? cedarsRating(score) : null;
     const monthlyKwhSaving = deptLabel.activeInterventions.reduce(
       (s, name) => s + (INTERVENTIONS[name]?.kwh || 0), 0
     );
@@ -1571,19 +1599,19 @@ function App() {
     const co2Saving = rnd(annualKwhSaving * effectiveCi, 1);
     const potentialCo2PerStudy = annualStudies > 0
       ? rnd(Math.max(0, annualKwh - annualKwhSaving) * effectiveCi / annualStudies, 3) : 0;
-    const potentialTierObj = annualStudies > 0
-      ? (DEPT_TIERS.find(t => potentialCo2PerStudy <= t.max) ?? DEPT_TIERS[DEPT_TIERS.length - 1])
-      : tierObj;
+    const potentialScore = hasData ? cedarsScore(potentialCo2PerStudy, CEDARS_DEPT_LO, CEDARS_DEPT_HI) : null;
+    const potentialRating = potentialScore != null ? cedarsRating(potentialScore) : rating;
     return {
       deptName: deptLabel.deptName || 'Unnamed Department',
       hospitalName: deptLabel.hospitalName || '',
       region: deptLabel.region,
       ci, effectiveCi, renewablePct,
       annualKwh, annualStudies, totalAnnualCo2, co2PerStudy, kwhPerStudy,
-      tier: tierObj.tier, tierLabel: tierObj.label, tierColor: tierObj.color, tierBg: tierObj.bg,
-      tierBadgeColor: tierObj.badgeColor, tierLetterColor: tierObj.letterColor,
+      hasData, score,
+      leaves: rating?.leaves ?? 0, ratingLabel: rating?.label ?? 'Enter data above',
+      ratingColor: rating?.color ?? '#90a4ae', ratingBg: rating?.bg ?? '#f5f5f5', ratingDesc: rating?.desc ?? '',
       monthlyKwhSaving, annualKwhSaving, co2Saving,
-      potentialCo2PerStudy, potentialTier: potentialTierObj.tier, potentialTierColor: potentialTierObj.color,
+      potentialCo2PerStudy, potentialScore, potentialLeaves: potentialRating?.leaves ?? 0, potentialRatingLabel: potentialRating?.label ?? '',
       interventionCount: deptLabel.activeInterventions.length,
       date: new Date().toISOString().slice(0, 7),
     };
@@ -2893,16 +2921,16 @@ function App() {
                 <div style={{color:'#A5D6A7', fontSize:13, marginTop:4}}>{ecoLabelData.projectName}</div>
                 <div style={{color:'#81C784', fontSize:11, marginTop:2}}>AI/ML Training Report · Radiology · {ecoLabelData.date}</div>
               </div>
-              <div style={{background:ecoLabelData.tierBg, padding:'14px 18px', display:'flex', alignItems:'center', gap:16}}>
-                <div style={{width:64,height:64,background:ecoLabelData.tierBadgeColor,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                  <span style={{fontSize:42,fontWeight:900,color:ecoLabelData.tierLetterColor,lineHeight:1}}>{ecoLabelData.tier}</span>
+              <div style={{background:ecoLabelData.ratingBg, padding:'16px 18px', display:'flex', alignItems:'center', gap:18}}>
+                <div style={{textAlign:'center', flexShrink:0}}>
+                  <div style={{fontSize:44, fontWeight:900, color:ecoLabelData.ratingColor, lineHeight:1}}>{ecoLabelData.hasData ? ecoLabelData.score : '—'}</div>
+                  <div style={{fontSize:10, fontWeight:700, color:ecoLabelData.ratingColor, letterSpacing:'0.04em'}}>CEDARS SCORE</div>
                 </div>
                 <div>
-                  <div style={{fontWeight:700, fontSize:15, color:ecoLabelData.tierColor}}>EU Energy Rating {ecoLabelData.tier} — {ecoLabelData.tierLabel}</div>
-                  <div style={{fontSize:12, color:'#263238', marginTop:3}}>
-                    {ecoLabelData.trainCo2 > 0
-                      ? `${ecoLabelData.trainCo2} kgCO₂e total training`
-                      : 'Enter training data above to calculate'}
+                  <LeafRating leaves={ecoLabelData.leaves} size={20} color={ecoLabelData.ratingColor}/>
+                  <div style={{fontWeight:700, fontSize:14, color:ecoLabelData.ratingColor, marginTop:4}}>{ecoLabelData.ratingLabel}</div>
+                  <div style={{fontSize:11, color:'#263238', marginTop:2}}>
+                    {ecoLabelData.hasData ? `${ecoLabelData.trainCo2} kgCO₂e total training` : 'Enter training data above to calculate'}
                   </div>
                 </div>
               </div>
@@ -2954,18 +2982,48 @@ function App() {
                 Markdown table: paste into LaTeX supplementary files, GitHub READMEs, or preprint appendices.
               </p>
               <div style={{marginTop:8}}>
-                <p className="note" style={{fontSize:11,marginBottom:6,fontWeight:700}}>EU Energy Rating — total training kgCO₂e:</p>
-                {AI_TIERS.map((t,i)=>(
-                  <div key={t.tier} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:3,fontWeight:ecoLabelData.tier===t.tier?700:400,color:ecoLabelData.tier===t.tier?'#263238':'#607d66'}}>
-                    <span style={{background:t.badgeColor,color:t.letterColor,borderRadius:4,padding:'1px 7px',fontWeight:900,fontSize:13,minWidth:18,textAlign:'center'}}>{t.tier}</span>
-                    <span>{t.label}</span>
-                    <span style={{marginLeft:'auto',fontFamily:'monospace',fontSize:10}}>{i===0?`< ${AI_TIERS[0].max}`:t.max===Infinity?`> ${AI_TIERS[AI_TIERS.length-2].max.toLocaleString()}`:`≤ ${t.max.toLocaleString()}`} kg</span>
+                <p className="note" style={{fontSize:11,marginBottom:6,fontWeight:700}}>CEDARS Rating — Score band:</p>
+                {CEDARS_RATINGS.map(r=>(
+                  <div key={r.leaves} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:3,fontWeight:ecoLabelData.leaves===r.leaves?700:400,color:ecoLabelData.leaves===r.leaves?'#263238':'#607d66'}}>
+                    <LeafRating leaves={r.leaves} size={12} color={r.color}/>
+                    <span>{r.label}</span>
+                    <span style={{marginLeft:'auto',fontFamily:'monospace',fontSize:10}}>{({5:'90–100',4:'75–89',3:'60–74',2:'40–59',1:'< 40'})[r.leaves]}</span>
                   </div>
                 ))}
-                <p className="note" style={{fontSize:10,marginTop:6}}>Modelled on the <a href="https://europa.eu/youreurope/citizens/consumers/shopping/energy-labels/index_en.htm" target="_blank" rel="noreferrer" style={{color:'#2E7D32'}}>EU Energy Label</a> A–G scale (Regulation EU 2021/341).</p>
+                <p className="note" style={{fontSize:10,marginTop:6}}>Continuous Score (0–100) from the estimated footprint, paired with a 1–5 leaf Rating — after Energy Star / EU Energy Label (Reg. EU 2021/341).</p>
               </div>
             </div>
           </div>
+
+          {/* ── CEDARS disclosure checklist ── */}
+          <section style={{marginBottom:24}}>
+            <h2 style={{marginBottom:4}}>CEDARS disclosure checklist</h2>
+            <p className="note" style={{marginBottom:12}}>The minimum set of items for a reproducible environmental footprint — a candidate reporting standard, after CLAIM/DEAL. Report these alongside your study.</p>
+            {(()=>{
+              const d = ecoLabelData;
+              const items = [
+                ['1', 'Compute hardware (type, count)', d.gpuHardware, d.gpuHardware !== '—', 'AI workload'],
+                ['2', 'Total energy (kWh) / GPU-hours', d.hasData ? `${d.totalEnergyKwh.toLocaleString()} kWh · ${d.totalGpuHours} GPU-h` : '—', d.hasData, 'AI workload'],
+                ['3', 'Grid carbon intensity, location, source', `${d.ci} kgCO₂e/kWh · ${d.region} · ${d.renewablePct}% renewable`, !!d.region, 'AI + cloud'],
+                ['4', 'Cloud provider & PUE', `${d.cloudProvider} · PUE ${d.pue}`, !!d.cloudProvider, 'Cloud'],
+                ['5', 'Training vs inference split', `Training ${d.trainCo2} kgCO₂e · Inference ${d.hasInference ? `${d.inferCo2Month} kgCO₂e/mo` : 'not reported'}`, d.hasData, 'AI workload'],
+                ['6', 'Water footprint', d.waterLitres > 0 ? `${d.waterLitres.toLocaleString()} L` : 'not reported', d.waterLitres > 0, 'Water use'],
+                ['7', 'CEDARS Score + Rating', d.hasData ? `Score ${d.score} · ${d.leaves}/5 leaves (${d.ratingLabel})` : '—', d.hasData, 'Score / Rating'],
+              ];
+              return (
+                <div style={{border:'1px solid #c8e6c9', borderRadius:14, overflow:'hidden'}}>
+                  {items.map(([n, item, val, ok, mod], i)=>(
+                    <div key={n} style={{display:'grid', gridTemplateColumns:'28px 1.6fr 2fr 110px', gap:10, alignItems:'center', padding:'9px 14px', background:i%2===0?'#f1f8f1':'white', fontSize:13}}>
+                      <span style={{color: ok ? '#2E7D32' : '#bdbdbd', fontWeight:900}}>{ok ? '✓' : '○'}</span>
+                      <span style={{color:'#263238', fontWeight:600}}>{item}</span>
+                      <span style={{color:'#607d66'}}>{val}</span>
+                      <span style={{fontSize:11, color:'#90a4ae', textAlign:'right'}}>{mod}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </section>
 
           {/* ── Markdown preview ── */}
           <section>
@@ -2999,7 +3057,7 @@ function App() {
           {ecoLabelTab==='dept' && (<>
             <p className="note" style={{marginBottom:16}}>
               Generate a department-level sustainability label for ESG reports, accreditation submissions, or public sustainability disclosures.
-              EU Energy Rating (A–G) is based on kgCO₂e per imaging study, benchmarked against published radiology carbon intensity data (Vosshenrich R et al., Curr Opin Urol 2024). The A–G scale is modelled on the <a href="https://europa.eu/youreurope/citizens/consumers/shopping/energy-labels/index_en.htm" target="_blank" rel="noreferrer" style={{color:'#2E7D32'}}>EU Energy Label</a> (Regulation EU 2021/341).
+              The CEDARS Score (0–100) and Rating (1–5 leaves) are based on kgCO₂e per imaging study, benchmarked against published radiology carbon intensity data (Vosshenrich R et al., Curr Opin Urol 2024), and follow the design logic of consumer ecolabels such as Energy Star and the <a href="https://europa.eu/youreurope/citizens/consumers/shopping/energy-labels/index_en.htm" target="_blank" rel="noreferrer" style={{color:'#2E7D32'}}>EU Energy Label</a> (Regulation EU 2021/341).
             </p>
 
             {/* ── Pre-fill from Radiology Dashboard ── */}
@@ -3071,21 +3129,23 @@ function App() {
 
             <h2>Label preview</h2>
             <div style={{display:'flex',gap:28,flexWrap:'wrap',alignItems:'flex-start',marginBottom:32}}>
-              <div style={{background:'white',border:`2px solid ${deptLabelData.tierColor}`,borderRadius:14,overflow:'hidden',minWidth:320,maxWidth:510,fontFamily:'Inter,sans-serif',boxShadow:'0 8px 30px #1b5e2020',flexShrink:0}}>
+              <div style={{background:'white',border:`2px solid ${deptLabelData.ratingColor}`,borderRadius:14,overflow:'hidden',minWidth:320,maxWidth:510,fontFamily:'Inter,sans-serif',boxShadow:'0 8px 30px #1b5e2020',flexShrink:0}}>
                 <div style={{background:'#1b5e20',padding:'14px 18px'}}>
                   <div style={{color:'white',fontWeight:700,fontSize:16,display:'flex',alignItems:'center',gap:8}}><Leaf style={{width:16,height:16}}/> CEDARS Department EcoLabel</div>
                   <div style={{color:'#A5D6A7',fontSize:13,marginTop:4}}>{deptLabelData.deptName}</div>
                   <div style={{color:'#81C784',fontSize:11,marginTop:2}}>{deptLabelData.hospitalName ? `${deptLabelData.hospitalName} · ` : ''}{deptLabelData.region} · {deptLabelData.date}</div>
                 </div>
-                <div style={{background:deptLabelData.tierBg,padding:'14px 18px',display:'flex',alignItems:'center',gap:16}}>
-                  <div style={{width:72,height:72,background:deptLabelData.tierBadgeColor,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                    <span style={{fontSize:48,fontWeight:900,color:deptLabelData.tierLetterColor,lineHeight:1}}>{deptLabelData.tier}</span>
+                <div style={{background:deptLabelData.ratingBg,padding:'16px 18px',display:'flex',alignItems:'center',gap:18}}>
+                  <div style={{textAlign:'center',flexShrink:0}}>
+                    <div style={{fontSize:48,fontWeight:900,color:deptLabelData.ratingColor,lineHeight:1}}>{deptLabelData.hasData ? deptLabelData.score : '—'}</div>
+                    <div style={{fontSize:10,fontWeight:700,color:deptLabelData.ratingColor,letterSpacing:'0.04em'}}>CEDARS SCORE</div>
                   </div>
                   <div>
-                    <div style={{fontWeight:700,fontSize:16,color:deptLabelData.tierColor}}>EU Energy Rating {deptLabelData.tier} — {deptLabelData.tierLabel}</div>
-                    <div style={{fontSize:13,color:'#263238',marginTop:3}}>{deptLabelData.co2PerStudy>0 ? `${deptLabelData.co2PerStudy} kgCO₂e per imaging study` : 'Enter data above to calculate'}</div>
-                    {deptLabelData.interventionCount>0 && deptLabelData.potentialTier!==deptLabelData.tier && (
-                      <div style={{fontSize:12,color:'#2E7D32',marginTop:3}}>With active interventions → potential Rating {deptLabelData.potentialTier}</div>
+                    <LeafRating leaves={deptLabelData.leaves} size={22} color={deptLabelData.ratingColor}/>
+                    <div style={{fontWeight:700,fontSize:15,color:deptLabelData.ratingColor,marginTop:4}}>{deptLabelData.ratingLabel}</div>
+                    <div style={{fontSize:12,color:'#263238',marginTop:2}}>{deptLabelData.hasData ? `${deptLabelData.co2PerStudy} kgCO₂e per imaging study` : 'Enter data above to calculate'}</div>
+                    {deptLabelData.interventionCount>0 && deptLabelData.potentialLeaves!==deptLabelData.leaves && (
+                      <div style={{fontSize:12,color:'#2E7D32',marginTop:3}}>With active interventions → potential Score {deptLabelData.potentialScore} ({deptLabelData.potentialLeaves}/5 leaves)</div>
                     )}
                   </div>
                 </div>
@@ -3120,18 +3180,48 @@ function App() {
                   ESG paragraph: paste into your hospital's annual sustainability report or ESR Green Imaging self-assessment.
                 </p>
                 <div style={{marginTop:8}}>
-                  <p className="note" style={{fontSize:11,marginBottom:6,fontWeight:700}}>EU Energy Rating — kgCO₂e / imaging study:</p>
-                  {DEPT_TIERS.map((t,i)=>(
-                    <div key={t.tier} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:3,fontWeight:deptLabelData.tier===t.tier?700:400,color:deptLabelData.tier===t.tier?'#263238':'#607d66'}}>
-                      <span style={{background:t.badgeColor,color:t.letterColor,borderRadius:4,padding:'1px 7px',fontWeight:900,fontSize:13,minWidth:18,textAlign:'center'}}>{t.tier}</span>
-                      <span>{t.label}</span>
-                      <span style={{marginLeft:'auto',fontFamily:'monospace',fontSize:10}}>{i===0?`< ${DEPT_TIERS[0].max}`:t.max===Infinity?`> ${DEPT_TIERS[DEPT_TIERS.length-2].max}`:`≤ ${t.max}`} kg</span>
+                  <p className="note" style={{fontSize:11,marginBottom:6,fontWeight:700}}>CEDARS Rating — Score band:</p>
+                  {CEDARS_RATINGS.map(r=>(
+                    <div key={r.leaves} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,marginBottom:3,fontWeight:deptLabelData.leaves===r.leaves?700:400,color:deptLabelData.leaves===r.leaves?'#263238':'#607d66'}}>
+                      <LeafRating leaves={r.leaves} size={12} color={r.color}/>
+                      <span>{r.label}</span>
+                      <span style={{marginLeft:'auto',fontFamily:'monospace',fontSize:10}}>{({5:'90–100',4:'75–89',3:'60–74',2:'40–59',1:'< 40'})[r.leaves]}</span>
                     </div>
                   ))}
-                  <p className="note" style={{fontSize:10,marginTop:6}}>Modelled on the <a href="https://europa.eu/youreurope/citizens/consumers/shopping/energy-labels/index_en.htm" target="_blank" rel="noreferrer" style={{color:'#2E7D32'}}>EU Energy Label</a> A–G scale (Regulation EU 2021/341).</p>
+                  <p className="note" style={{fontSize:10,marginTop:6}}>Continuous Score (0–100) from the per-study footprint, paired with a 1–5 leaf Rating — after Energy Star / EU Energy Label (Reg. EU 2021/341).</p>
                 </div>
               </div>
             </div>
+
+            {/* ── CEDARS disclosure checklist (department) ── */}
+            <section style={{marginBottom:24}}>
+              <h2 style={{marginBottom:4}}>CEDARS disclosure checklist</h2>
+              <p className="note" style={{marginBottom:12}}>The minimum set of items for a reproducible department footprint — a candidate reporting standard, after CLAIM/DEAL.</p>
+              {(()=>{
+                const d = deptLabelData;
+                const items = [
+                  ['1', 'Imaging operation (studies / year)', d.hasData ? `${d.annualStudies.toLocaleString()} studies/yr` : '—', d.hasData, 'Department'],
+                  ['2', 'Total energy (kWh / year)', d.annualKwh > 0 ? `${d.annualKwh.toLocaleString()} kWh` : '—', d.annualKwh > 0, 'Department'],
+                  ['3', 'Grid carbon intensity, location, source', `${d.effectiveCi} kgCO₂e/kWh · ${d.region} · ${d.renewablePct}% renewable`, !!d.region, 'Grid'],
+                  ['4', 'Annual carbon footprint', d.totalAnnualCo2 > 0 ? `${d.totalAnnualCo2.toLocaleString()} kgCO₂e` : '—', d.totalAnnualCo2 > 0, 'Department'],
+                  ['5', 'Active mitigation / interventions', d.interventionCount > 0 ? `${d.interventionCount} · ~${d.annualKwhSaving.toLocaleString()} kWh/yr saved` : 'none reported', d.interventionCount > 0, 'Interventions'],
+                  ['6', 'Carbon intensity per study', d.hasData ? `${d.co2PerStudy} kgCO₂e/study` : '—', d.hasData, 'Department'],
+                  ['7', 'CEDARS Score + Rating', d.hasData ? `Score ${d.score} · ${d.leaves}/5 leaves (${d.ratingLabel})` : '—', d.hasData, 'Score / Rating'],
+                ];
+                return (
+                  <div style={{border:'1px solid #c8e6c9', borderRadius:14, overflow:'hidden'}}>
+                    {items.map(([n, item, val, ok, mod], i)=>(
+                      <div key={n} style={{display:'grid', gridTemplateColumns:'28px 1.6fr 2fr 110px', gap:10, alignItems:'center', padding:'9px 14px', background:i%2===0?'#f1f8f1':'white', fontSize:13}}>
+                        <span style={{color: ok ? '#2E7D32' : '#bdbdbd', fontWeight:900}}>{ok ? '✓' : '○'}</span>
+                        <span style={{color:'#263238', fontWeight:600}}>{item}</span>
+                        <span style={{color:'#607d66'}}>{val}</span>
+                        <span style={{fontSize:11, color:'#90a4ae', textAlign:'right'}}>{mod}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </section>
 
             {deptLabelData.annualStudies>0 && (
               <section style={{marginTop:0}}>
