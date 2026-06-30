@@ -339,7 +339,7 @@ const MODALITY_BENCHMARKS = [
 // scanTimeReductPct, lowValueReductPct) are the model's REPORTED values from the cited
 // reference — EcoRad never predicts accuracy, it only records what the user enters.
 const AI_MODEL_LIBRARY = [
-  {key:'cad',        label:'CAD / triage classifier',          Icon:Target,   reference:'CheXNet (DenseNet-121)',          refCite:'Rajpurkar 2017, arXiv:1711.05225',
+  {key:'cad',        label:'Classification / triage',          Icon:Target,   reference:'CheXNet (DenseNet-121)',          refCite:'Rajpurkar 2017, arXiv:1711.05225',
    architecture:'CNN / ResNet',                dim:'2D', resolution:224,  slices:1,   paramsM:8,    inferSec:0.4, gpuKw:0.07, trainMwh:0.05, embCo2Kg:40,  accuracyPct:84, accuracyMetric:'AUC',         scanTimeReductPct:0,  lowValueReductPct:12},
   {key:'detect',     label:'Lesion / nodule detection',        Icon:Scan,     reference:'RetinaNet-style detector',        refCite:'Lin 2017 (focal loss); task-specific',
    architecture:'CNN / ResNet',                dim:'2D', resolution:512,  slices:1,   paramsM:35,   inferSec:0.8, gpuKw:0.15, trainMwh:0.2,  embCo2Kg:60,  accuracyPct:90, accuracyMetric:'Sensitivity', scanTimeReductPct:0,  lowValueReductPct:8},

@@ -127,7 +127,7 @@ The AI Dashboard ships a library of task-family templates spanning the real spac
 
 | Template | Reference model | Citation |
 |----------|-----------------|----------|
-| CAD / triage classifier | CheXNet (DenseNet-121) | Rajpurkar P et al. 2017, arXiv:1711.05225 |
+| Classification / triage | CheXNet (DenseNet-121) | Rajpurkar P et al. 2017, arXiv:1711.05225 |
 | Lesion / nodule detection | RetinaNet-style detector | Lin TY et al. 2017 (focal loss), arXiv:1708.02002; task-specific |
 | Organ segmentation (2D) | U-Net | Ronneberger O et al. 2015, MICCAI, DOI: [10.1007/978-3-319-24574-4_28](https://doi.org/10.1007/978-3-319-24574-4_28) |
 | Volumetric segmentation (3D) | nnU-Net | Isensee F et al. 2021, Nat Methods 18:203–211, DOI: [10.1038/s41592-020-01008-z](https://doi.org/10.1038/s41592-020-01008-z) |
