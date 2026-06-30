@@ -114,6 +114,33 @@ EcoRad stores uncertain literature values as transparent, editable defaults with
 
 ---
 
+## AI model library (`AI_MODEL_LIBRARY`) and performance governance
+
+The AI Dashboard ships a library of task-family templates spanning the real space of radiology AI. **Each template is an editable starting point, not an authoritative spec.** The fields divide into two categories with very different epistemic status:
+
+- **Energy drivers** (`paramsM`, `dim`, `resolution`, `slices`, `inferSec`, `gpuKw`, `trainMwh`, `embCo2Kg`) — physically grounded. Inference time auto-scales with `params × resolution² (× slices for 3D)` relative to the template's measured base; energy then follows from GPU power, PUE, and precision. These are defensible *relative* estimates anchored to a real datapoint, not absolute FLOPs claims.
+- **Performance fields** (`accuracyPct`, `accuracyMetric`, `scanTimeReductPct`, `lowValueReductPct`) — **NOT predicted by EcoRad.** They default to the cited reference's reported value and are presented as editable, user-owned numbers. EcoRad never infers accuracy from model size or architecture; the user must enter their own validation results for any published figure.
+
+**Governing principle:** carbon/energy may be modelled (it is physics); model *performance* may only be recorded (it is not predictable from architecture). The accuracy-vs-carbon trade-off the dashboard surfaces is therefore a comparison of *user-supplied* performance under a consistent carbon methodology.
+
+**Template reference anchors** (defaults only — replace with your own measured GPU-hours, inference time, and validation metrics):
+
+| Template | Reference model | Citation |
+|----------|-----------------|----------|
+| CAD / triage classifier | CheXNet (DenseNet-121) | Rajpurkar P et al. 2017, arXiv:1711.05225 |
+| Lesion / nodule detection | RetinaNet-style detector | Lin TY et al. 2017 (focal loss), arXiv:1708.02002; task-specific |
+| Organ segmentation (2D) | U-Net | Ronneberger O et al. 2015, MICCAI, DOI: [10.1007/978-3-319-24574-4_28](https://doi.org/10.1007/978-3-319-24574-4_28) |
+| Volumetric segmentation (3D) | nnU-Net | Isensee F et al. 2021, Nat Methods 18:203–211, DOI: [10.1038/s41592-020-01008-z](https://doi.org/10.1038/s41592-020-01008-z) |
+| Reconstruction / denoising | DL recon (low-dose CT / fast MRI) | Radiology 2023, DOI: [10.1148/radiol.230441](https://doi.org/10.1148/radiol.230441) |
+| Image synthesis (diffusion) | Diffusion model (e.g. MRI→CT) | Kazerouni A et al. 2023, Med Image Anal 88:102846, DOI: [10.1016/j.media.2023.102846](https://doi.org/10.1016/j.media.2023.102846) |
+| Report generation (LLM / VLM) | Radiology report-generation LLM | Doo FX et al. 2024, Radiology, DOI: [10.1148/radiol.240320](https://doi.org/10.1148/radiol.240320) (LLM-Energy) |
+| Foundation / prompt model | MedSAM (Segment Anything, medical) | Ma J et al. 2024, Nat Commun 15:654, DOI: [10.1038/s41467-024-44824-z](https://doi.org/10.1038/s41467-024-44824-z) |
+| Custom / blank | User-defined | — |
+
+Energy-scaling methodology references: `LLM-Energy` (inference energy vs. model size) and `Doo-JACR-2024` §4 (training/testing/inference lifecycle phases), both above. GPU power draw from `GPU_PRESETS` (see GPU hardware specifications section); PUE from `CLOUD` defaults above.
+
+---
+
 ## Intervention savings defaults
 
 Baseline kWh savings in `INTERVENTIONS` are conservative departmental estimates informed by the sources below. Replace with measured before/after metering.
@@ -213,3 +240,4 @@ Staff commute headcount is derived automatically from the equipment configuratio
 6. **Report Scope 1, 2, and 3 separately** where the data model supports it. The Scope 1/2/3 structure follows the GHG Protocol as applied to radiology departments by **Doo-JACR-2024**. Scope 3 inclusions (embodied carbon, patient travel, staff commute, DICOM data transfer) are drawn from that framework.
 7. **Update defaults annually** as grids decarbonise and scanner technology improves.
 8. **AI lifecycle reporting follows Doo-JACR-2024 §4.** Training (Phase 1), testing/validation (Phase 2), and inference/deployment (Phase 3) are the three phases. Per-study Software Carbon Intensity (SCI) per the Green Software Foundation specification is the recommended single-number comparison metric for AI tools.
+9. **Model energy may be modelled; model performance may only be recorded.** AI inference/training energy is estimated from physical drivers (parameters, resolution, dimensionality, GPU power, PUE). Diagnostic performance (accuracy, Dice, AUC, etc.) and clinical co-benefits are **never predicted** — they default to a cited reference and must be replaced with the user's own validation results. See the AI model library section.
