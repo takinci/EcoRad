@@ -1,5 +1,5 @@
 {
-  "name": "ecorad-frontend",
+  "name": "cedars-frontend",
   "private": true,
   "scripts": {
     "dev": "vite",

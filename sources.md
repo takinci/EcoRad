@@ -1,6 +1,6 @@
-# EcoRad — Sources and Assumption Governance
+# CEDARS — Sources and Assumption Governance
 
-EcoRad stores uncertain literature values as transparent, editable defaults with citation fields. Local measured data — procurement records, utility bills, scanner logs, PACS/cloud invoices, and country-specific carbon factors — should replace defaults wherever available.
+CEDARS stores uncertain literature values as transparent, editable defaults with citation fields. Local measured data — procurement records, utility bills, scanner logs, PACS/cloud invoices, and country-specific carbon factors — should replace defaults wherever available.
 
 ---
 
@@ -28,7 +28,7 @@ EcoRad stores uncertain literature values as transparent, editable defaults with
 |----|---------|
 | McKee-2024 | McKee BJ et al. *Planetary Health and Radiology: Why We Should Care and What We Can Do.* Radiology 2024. DOI: [10.1148/radiol.240219](https://doi.org/10.1148/radiol.240219). Used for intervention framing and the operational sustainability action categories. |
 | Doo-2024 | Doo FX et al. *Environmental Sustainability and AI in Radiology: A Double-Edged Sword.* Radiology 2024. DOI: [10.1148/radiol.232030](https://doi.org/10.1148/radiol.232030). Used for AI footprint vs. operational benefit framework; cloud PUE and carbon intensity discussion. |
-| Doo-JACR-2024 | Doo FX et al. *Sustainability in Radiology — Implementation Framework and Metrics Guide.* J Am Coll Radiol 2024. **[Add DOI]** This is the primary framework document referenced throughout EcoRad as "Implementation Guide". Provides: (1) GHG Protocol Scope 1/2/3 structure for radiology departments; (2) the "Recycling Pyramid" (Prevent unnecessary scans → Reduce scan energy → Recover/recycle) for AI sustainability prioritisation; (3) Scope 3 inclusions for radiology — staff commute, DICOM data transfer; (4) AI lifecycle metric definitions (§4): training energy (Metric 1), inference energy (Metric 2), per-study Software Carbon Intensity; (5) AI efficiency ratio (accuracy % per kWh). All "Implementation Guide §N" and "Doo et al. JACR 2024" references in the UI and `computeAI()` source code comments refer to this paper. |
+| Doo-JACR-2024 | Doo FX et al. *Sustainability in Radiology — Implementation Framework and Metrics Guide.* J Am Coll Radiol 2024. **[Add DOI]** This is the primary framework document referenced throughout CEDARS as "Implementation Guide". Provides: (1) GHG Protocol Scope 1/2/3 structure for radiology departments; (2) the "Recycling Pyramid" (Prevent unnecessary scans → Reduce scan energy → Recover/recycle) for AI sustainability prioritisation; (3) Scope 3 inclusions for radiology — staff commute, DICOM data transfer; (4) AI lifecycle metric definitions (§4): training energy (Metric 1), inference energy (Metric 2), per-study Software Carbon Intensity; (5) AI efficiency ratio (accuracy % per kWh). All "Implementation Guide §N" and "Doo et al. JACR 2024" references in the UI and `computeAI()` source code comments refer to this paper. |
 | ESR-GI | ESR Green Imaging Department self-assessment tool. https://www.myesr.org/greenid/. Intervention categories and self-assessment framing. |
 | ESR-eBook | ESR. *Sustainable Imaging* (eBook 28). https://www.myesr.org/app/uploads/2025/05/ESR_Modern_eBook_28.pdf. Comprehensive practice guidance. |
 | ESR-PP-2025 | *Sustainability in Radiology: Position Paper and Call to Action.* European Society of Radiology 2025. Intervention priorities and Scope 1/2/3 framing. |
@@ -119,7 +119,7 @@ EcoRad stores uncertain literature values as transparent, editable defaults with
 The AI Dashboard ships a library of task-family templates spanning the real space of radiology AI. **Each template is an editable starting point, not an authoritative spec.** The fields divide into two categories with very different epistemic status:
 
 - **Energy drivers** (`paramsM`, `dim`, `resolution`, `slices`, `inferSec`, `gpuKw`, `trainMwh`, `embCo2Kg`) — physically grounded. Inference time auto-scales with `params × resolution² (× slices for 3D)` relative to the template's measured base; energy then follows from GPU power, PUE, and precision. These are defensible *relative* estimates anchored to a real datapoint, not absolute FLOPs claims.
-- **Performance fields** (`accuracyPct`, `accuracyMetric`, `scanTimeReductPct`, `lowValueReductPct`) — **NOT predicted by EcoRad.** They default to the cited reference's reported value and are presented as editable, user-owned numbers. EcoRad never infers accuracy from model size or architecture; the user must enter their own validation results for any published figure.
+- **Performance fields** (`accuracyPct`, `accuracyMetric`, `scanTimeReductPct`, `lowValueReductPct`) — **NOT predicted by CEDARS.** They default to the cited reference's reported value and are presented as editable, user-owned numbers. CEDARS never infers accuracy from model size or architecture; the user must enter their own validation results for any published figure.
 
 **Governing principle:** carbon/energy may be modelled (it is physics); model *performance* may only be recorded (it is not predictable from architecture). The accuracy-vs-carbon trade-off the dashboard surfaces is therefore a comparison of *user-supplied* performance under a consistent carbon methodology.
 
@@ -181,7 +181,7 @@ Used in the Dashboard "What it means" tab and the Home page result panel to expr
 
 ## Scope 3 metrics: staff commute, DICOM data transfer, and Software Carbon Intensity
 
-These three metrics were added to EcoRad based on gaps identified in Doo et al. JACR 2024 relative to common departmental reporting practice.
+These three metrics were added to CEDARS based on gaps identified in Doo et al. JACR 2024 relative to common departmental reporting practice.
 
 | ID | Citation |
 |----|---------|

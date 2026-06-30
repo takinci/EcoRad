@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="./Logo only.png" alt="EcoRad logo" width="120"/>
+<img src="./Logo only.png" alt="CEDARS logo" width="120"/>
 
-# EcoRad
+# CEDARS
 
-### Radiology Sustainability Intelligence
+### Carbon, Energy Diagnostics for AI and Radiology Sustainability
 
 **Measure the environmental footprint of a clinical imaging department — energy, carbon, water, AI, and more — directly in your browser.**
 
@@ -17,9 +17,9 @@
 
 ---
 
-## What is EcoRad?
+## What is CEDARS?
 
-EcoRad is a browser-based sustainability dashboard for clinical radiology departments. It quantifies the environmental impact of imaging operations, compares interventions, models AI tool footprints, and generates shareable reports — all from published literature defaults that you can override with your own measured data.
+CEDARS (Carbon, Energy Diagnostics for AI and Radiology Sustainability) is a browser-based sustainability dashboard for clinical radiology departments. It quantifies the environmental impact of imaging operations, compares interventions, models AI tool footprints, and generates shareable reports — all from published literature defaults that you can override with your own measured data.
 
 No installation. No backend. No data leaves your browser.
 
@@ -173,6 +173,6 @@ See [sources.md](./sources.md) for the full assumptions governance document.
 
 Built for radiology sustainability research · Evidence-based · Open source
 
-[**→ Open EcoRad**](https://takinci.github.io/EcoRad/)
+[**→ Open CEDARS**](https://takinci.github.io/EcoRad/)
 
 </div>

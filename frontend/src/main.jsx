@@ -337,7 +337,7 @@ const MODALITY_BENCHMARKS = [
 // spanning the real space of radiology AI. Energy drivers (params, dim, resolution, inferSec,
 // gpuKw, trainMwh) are physically grounded; performance fields (accuracyPct, accuracyMetric,
 // scanTimeReductPct, lowValueReductPct) are the model's REPORTED values from the cited
-// reference — EcoRad never predicts accuracy, it only records what the user enters.
+// reference — CEDARS never predicts accuracy, it only records what the user enters.
 const AI_MODEL_LIBRARY = [
   {key:'cad',        label:'Classification / triage',          Icon:Target,   reference:'CheXNet (DenseNet-121)',          refCite:'Rajpurkar 2017, arXiv:1711.05225',
    architecture:'CNN / ResNet',                dim:'2D', resolution:224,  slices:1,   paramsM:8,    inferSec:0.4, gpuKw:0.07, trainMwh:0.05, embCo2Kg:40,  accuracyPct:84, accuracyMetric:'AUC',         scanTimeReductPct:0,  lowValueReductPct:12},
@@ -803,8 +803,8 @@ function computeCloudCarbon(t) {
 function Logo({onClick}) {
   return (
     <div className="brand" onClick={onClick} style={onClick ? {cursor:'pointer'} : undefined}>
-      <img src="./logo-only.png" alt="EcoRad logo" style={{width:68, height:68, objectFit:'contain'}}/>
-      <div><strong>EcoRad</strong><span>Sustainable Intelligence for Radiology</span></div>
+      <img src="./logo-only.png" alt="CEDARS logo" style={{width:68, height:68, objectFit:'contain'}}/>
+      <div><strong>CEDARS</strong><span>Carbon, Energy Diagnostics for AI &amp; Radiology Sustainability</span></div>
     </div>
   );
 }
@@ -836,7 +836,7 @@ function downloadCSV(dash) {
   const blank = '';
 
   const lines = [
-    row(['EcoRad Sustainability Report']),
+    row(['CEDARS Sustainability Report']),
     row(['Profile', dash.region, dash.timePeriod]),
     row(['Carbon intensity (kgCO2e/kWh)', dash.ci]),
     blank,
@@ -886,7 +886,7 @@ function downloadCSV(dash) {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = `ecorad_${dash.region}_${dash.timePeriod}.csv`.replace(/\s+/g, '_');
+  a.download = `cedars_${dash.region}_${dash.timePeriod}.csv`.replace(/\s+/g, '_');
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -899,7 +899,7 @@ function downloadAICSV(ai, scen, region) {
   const blank = '';
 
   const lines = [
-    row(['EcoRad AI Sustainability Report']),
+    row(['CEDARS AI Sustainability Report']),
     row(['Region', region, 'Cloud / deployment', scen.cloudProvider]),
     row(['Model template', AI_MODEL_BY_KEY[scen.modelKey]?.label ?? scen.modelKey, 'Reference', AI_MODEL_BY_KEY[scen.modelKey]?.reference ?? '']),
     row(['Architecture', scen.architecture, 'Model size', ai.modelSize]),
@@ -960,7 +960,7 @@ function downloadAICSV(ai, scen, region) {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = `ecorad_ai_${region}_${scen.cloudProvider}.csv`.replace(/\s+/g, '_');
+  a.download = `cedars_ai_${region}_${scen.cloudProvider}.csv`.replace(/\s+/g, '_');
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -973,7 +973,7 @@ function downloadCloudCSV(result, tracker) {
   const blank = '';
 
   const lines = [
-    row(['EcoRad Cloud Carbon Report']),
+    row(['CEDARS Cloud Carbon Report']),
     row(['Provider', tracker.provider, 'Region', tracker.region]),
     row(['Grid CI (kgCO2e/kWh)', result.regionCi, 'Effective CI', result.ci]),
     row(['PUE', result.pue, 'Renewables (%)', result.renewable]),
@@ -1020,7 +1020,7 @@ function downloadCloudCSV(result, tracker) {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = `ecorad_cloud_${tracker.provider}_${tracker.region}.csv`.replace(/\s+/g, '_');
+  a.download = `cedars_cloud_${tracker.provider}_${tracker.region}.csv`.replace(/\s+/g, '_');
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1057,7 +1057,7 @@ function generateDeptText(d) {
     `Environmental footprint. ${d.deptName}${d.hospitalName ? ` (${d.hospitalName})` : ''} consumed an estimated ${d.annualKwh.toLocaleString()} kWh of electricity in the reporting period, generating approximately ${d.totalAnnualCo2.toLocaleString()} kgCO₂e (effective carbon intensity: ${d.effectiveCi} kgCO₂e/kWh; renewable energy: ${d.renewablePct}%; grid region: ${d.region}). ` +
     `Across ${d.annualStudies.toLocaleString()} imaging studies, the carbon intensity per study was ${d.co2PerStudy} kgCO₂e/study (${d.kwhPerStudy} kWh/study), corresponding to EU Energy Rating ${d.tier} (${d.tierLabel}) on the A–G scale modelled after EU Regulation 2021/341.` +
     (d.interventionCount > 0 ? ` The department has implemented ${d.interventionCount} sustainability intervention${d.interventionCount > 1 ? 's' : ''}, with an estimated energy saving potential of ${d.annualKwhSaving.toLocaleString()} kWh/yr (${d.co2Saving} kgCO₂e/yr).` : '') +
-    ` Sustainability metrics were estimated using EcoRad (${d.date}), informed by the framework of Vosshenrich R et al. (Curr Opin Urol 2024, DOI: 10.1097/MOU.0000000000001337) and McKee BJ et al. (Radiology 2024, DOI: 10.1148/radiol.240219).`
+    ` Sustainability metrics were estimated using CEDARS (${d.date}), informed by the framework of Vosshenrich R et al. (Curr Opin Urol 2024, DOI: 10.1097/MOU.0000000000001337) and McKee BJ et al. (Radiology 2024, DOI: 10.1148/radiol.240219).`
   );
 }
 
@@ -1085,7 +1085,7 @@ function downloadDeptPNG(d) {
   ctx.fillStyle = '#1b5e20';
   ctx.beginPath(); ctx.roundRect(1, 1, W-2, HEADER_H, [13,13,0,0]); ctx.fill();
   ctx.fillStyle = '#ffffff'; ctx.font = 'bold 15px sans-serif';
-  ctx.fillText('EcoRad Department EcoLabel', 16, 26);
+  ctx.fillText('CEDARS Department EcoLabel', 16, 26);
   ctx.font = '13px sans-serif'; ctx.fillStyle = '#A5D6A7';
   ctx.fillText(d.deptName, 16, 48);
   ctx.font = '10px sans-serif'; ctx.fillStyle = '#81C784';
@@ -1116,12 +1116,12 @@ function downloadDeptPNG(d) {
   ctx.fillStyle = '#e8f5e9';
   ctx.beginPath(); ctx.roundRect(2, footerY, W-4, FOOTER_H, [0,0,11,11]); ctx.fill();
   ctx.fillStyle = '#2E7D32'; ctx.font = '10px sans-serif';
-  ctx.fillText(`EcoRad \xb7 ${d.date} \xb7 EU Energy Label A–G (EU 2021/341) \xb7 CC BY 4.0`, 14, footerY+18);
+  ctx.fillText(`CEDARS \xb7 ${d.date} \xb7 EU Energy Label A–G (EU 2021/341) \xb7 CC BY 4.0`, 14, footerY+18);
   canvas.toBlob(blob => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ecorad_dept_label_${(d.deptName||'department').replace(/\W+/g,'_')}.png`;
+    a.download = `cedars_dept_label_${(d.deptName||'department').replace(/\W+/g,'_')}.png`;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
   });
@@ -1148,14 +1148,14 @@ function generateEcoMarkdown(d) {
       'Monthly inference',
       `${d.inferStudies.toLocaleString()} studies · ${d.inferMonthlyKwh} kWh · ${d.inferCo2Month} kgCO₂e`,
     ]] : []),
-    ['Estimated with',           `EcoRad · ${d.date}`],
+    ['Estimated with',           `CEDARS · ${d.date}`],
   ];
   return [
     '| Metric | Value |',
     '|:---|:---|',
     ...rows.map(([k, v]) => `| ${k} | ${v} |`),
     '',
-    '> Sustainability label generated with [EcoRad](https://takinci.github.io/EcoRad/).',
+    '> Sustainability label generated with [CEDARS](https://takinci.github.io/EcoRad/).',
     '> Reporting framework: Doo FX et al. *Radiology* 2024 · DOI 10.1148/radiol.232030.',
   ].join('\n');
 }
@@ -1190,7 +1190,7 @@ function downloadEcoPNG(d) {
   ctx.fillStyle = '#1b5e20';
   ctx.beginPath(); ctx.roundRect(1, 1, W - 2, HEADER_H, [13, 13, 0, 0]); ctx.fill();
   ctx.fillStyle = '#ffffff'; ctx.font = 'bold 15px sans-serif';
-  ctx.fillText('EcoRad EcoLabel', 16, 26);
+  ctx.fillText('CEDARS EcoLabel', 16, 26);
   ctx.font = '13px sans-serif'; ctx.fillStyle = '#A5D6A7';
   ctx.fillText(d.projectName, 16, 48);
   ctx.font = '10px sans-serif'; ctx.fillStyle = '#81C784';
@@ -1208,12 +1208,12 @@ function downloadEcoPNG(d) {
   ctx.fillStyle = '#e8f5e9';
   ctx.beginPath(); ctx.roundRect(2, footerY, W - 4, FOOTER_H, [0, 0, 11, 11]); ctx.fill();
   ctx.fillStyle = '#2E7D32'; ctx.font = '10px sans-serif';
-  ctx.fillText(`EcoRad · ${d.date} · Doo et al. Radiology 2024 · CC BY 4.0`, 14, footerY + 18);
+  ctx.fillText(`CEDARS · ${d.date} · Doo et al. Radiology 2024 · CC BY 4.0`, 14, footerY + 18);
   canvas.toBlob(blob => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ecorad_ecolabel_${(d.projectName || 'untitled').replace(/\W+/g, '_')}.png`;
+    a.download = `cedars_ecolabel_${(d.projectName || 'untitled').replace(/\W+/g, '_')}.png`;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
   });
@@ -2274,7 +2274,7 @@ function App() {
             <div className="cards">
               <Card icon={<Brain/>}      title="Architecture"         value={scen.architecture}                         sub={ai.archDesc}/>
               <Card icon={<Cpu/>}        title="Model size"           value={ai.modelSize}                              sub={`${ai.paramsM.toLocaleString()}M params · ${ai.dim}${ai.dim==='3D'?` · ${ai.slices} slices`:''} · ${ai.resolution}px input.`}/>
-              <Card icon={<Target/>}     title={`Reported ${ai.accuracyMetric}`} value={`${rnd(ai.accuracy*100,1)}%`}     sub={`Your reported value — default from ${AI_MODEL_BY_KEY[scen.modelKey]?.reference ?? 'reference'}. Edit below. EcoRad does not predict performance.`}/>
+              <Card icon={<Target/>}     title={`Reported ${ai.accuracyMetric}`} value={`${rnd(ai.accuracy*100,1)}%`}     sub={`Your reported value — default from ${AI_MODEL_BY_KEY[scen.modelKey]?.reference ?? 'reference'}. Edit below. CEDARS does not predict performance.`}/>
               <Card icon={<BarChart3/>}  title="Efficiency ratio"     value={`${ai.efficiencyRatio} acc%/kWh`}          sub={`Reported ${ai.accuracyMetric} % per monthly inference kWh. Use to compare models. (Green AI metric)`}/>
             </div>
 
@@ -2650,7 +2650,7 @@ function App() {
             <strong> same department context</strong> ({settings.region}, your current equipment fleet) — only the model varies.
           </p>
           <p className="note" style={{marginBottom:16,fontSize:12}}>
-            Performance values are <strong>user-reported</strong>, not predicted by EcoRad — edit each candidate's reported metric on the AI dashboard before adding it. Configure a model on the AI dashboard, then add it here.
+            Performance values are <strong>user-reported</strong>, not predicted by CEDARS — edit each candidate's reported metric on the AI dashboard before adding it. Configure a model on the AI dashboard, then add it here.
           </p>
 
           <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:16}}>
@@ -2888,7 +2888,7 @@ function App() {
             <div style={{background:'white', border:'2px solid #2E7D32', borderRadius:14, overflow:'hidden', minWidth:320, maxWidth:510, fontFamily:'Inter,sans-serif', boxShadow:'0 8px 30px #1b5e2020', flexShrink:0}}>
               <div style={{background:'#1b5e20', padding:'14px 18px'}}>
                 <div style={{color:'white', fontWeight:700, fontSize:16, display:'flex', alignItems:'center', gap:8}}>
-                  <Leaf style={{width:16,height:16}}/> EcoRad EcoLabel
+                  <Leaf style={{width:16,height:16}}/> CEDARS EcoLabel
                 </div>
                 <div style={{color:'#A5D6A7', fontSize:13, marginTop:4}}>{ecoLabelData.projectName}</div>
                 <div style={{color:'#81C784', fontSize:11, marginTop:2}}>AI/ML Training Report · Radiology · {ecoLabelData.date}</div>
@@ -2929,7 +2929,7 @@ function App() {
                 </div>
               ))}
               <div style={{background:'#e8f5e9', padding:'8px 18px', fontSize:11, color:'#2E7D32'}}>
-                Estimated with EcoRad · {ecoLabelData.date} · Doo et al. Radiology 2024 · CC BY 4.0
+                Estimated with CEDARS · {ecoLabelData.date} · Doo et al. Radiology 2024 · CC BY 4.0
               </div>
             </div>
 
@@ -2991,7 +2991,7 @@ function App() {
                (ecoLabelData.hasInference
                  ? ` Monthly inference for ${ecoLabelData.inferStudies.toLocaleString()} studies consumes ${ecoLabelData.inferMonthlyKwh} kWh (${ecoLabelData.inferCo2Month} kgCO₂e/month).`
                  : '') +
-               ` Sustainability metrics were estimated using EcoRad (${ecoLabelData.date}), following the framework of Doo FX et al. (Radiology 2024, DOI: 10.1148/radiol.232030).`}
+               ` Sustainability metrics were estimated using CEDARS (${ecoLabelData.date}), following the framework of Doo FX et al. (Radiology 2024, DOI: 10.1148/radiol.232030).`}
             </pre>
           </section>
           </>)}
@@ -3073,7 +3073,7 @@ function App() {
             <div style={{display:'flex',gap:28,flexWrap:'wrap',alignItems:'flex-start',marginBottom:32}}>
               <div style={{background:'white',border:`2px solid ${deptLabelData.tierColor}`,borderRadius:14,overflow:'hidden',minWidth:320,maxWidth:510,fontFamily:'Inter,sans-serif',boxShadow:'0 8px 30px #1b5e2020',flexShrink:0}}>
                 <div style={{background:'#1b5e20',padding:'14px 18px'}}>
-                  <div style={{color:'white',fontWeight:700,fontSize:16,display:'flex',alignItems:'center',gap:8}}><Leaf style={{width:16,height:16}}/> EcoRad Department EcoLabel</div>
+                  <div style={{color:'white',fontWeight:700,fontSize:16,display:'flex',alignItems:'center',gap:8}}><Leaf style={{width:16,height:16}}/> CEDARS Department EcoLabel</div>
                   <div style={{color:'#A5D6A7',fontSize:13,marginTop:4}}>{deptLabelData.deptName}</div>
                   <div style={{color:'#81C784',fontSize:11,marginTop:2}}>{deptLabelData.hospitalName ? `${deptLabelData.hospitalName} · ` : ''}{deptLabelData.region} · {deptLabelData.date}</div>
                 </div>
@@ -3104,7 +3104,7 @@ function App() {
                   </div>
                 ))}
                 <div style={{background:'#e8f5e9',padding:'8px 18px',fontSize:11,color:'#2E7D32'}}>
-                  Estimated with EcoRad · {deptLabelData.date} · Vosshenrich et al. Curr Opin Urol 2024 · CC BY 4.0
+                  Estimated with CEDARS · {deptLabelData.date} · Vosshenrich et al. Curr Opin Urol 2024 · CC BY 4.0
                 </div>
               </div>
 
