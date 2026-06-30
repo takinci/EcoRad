@@ -106,17 +106,17 @@ const MRI_CARDS = [
   {key:'mri_7t',   label:'MRI 7T',    sublabel:'Research scanner',              Icon:Brain, tooltip:MRI_7T_TOOLTIP},
 ];
 // AI tool presets — GPU/hours defaults from literature benchmarks.
-// CAD/segmentation: typical clinical deployment GPU (Doo 2024, Kocak 2025).
+// Classification/segmentation: typical clinical deployment GPU (Doo 2024, Kocak 2025).
 // LLM: A100-class cloud GPU for report generation (LLM-Energy PDF, Radiology 2024).
 // Reconstruction: on-site low-latency inference (Radiol 2023, doi:10.1148/radiol.230441).
 const AI_PRESETS = [
-  {key:'cad',   label:'Detection AI',          Icon:Target,    gpu:'NVIDIA RTX A6000',       hoursPerDay:'6',  numGpus:'1', deployment:'Local compute', sublabel:'Detection / classification',
-   tooltip:'RTX A6000 (300 W TDP) — typical dedicated workstation GPU for on-site CAD inference. 6 h/day reflects active clinical hours for real-time detection on incoming studies. Local deployment for low-latency PACS integration. Sources: Doo et al. Radiology 2024 (doi:10.1148/radiol.232030); Kocak et al. Insights Imaging 2025 (doi:10.1186/s13244-025-01962-2); NVIDIA DC Specs.'},
-  {key:'llm',   label:'LLM Report Assistant',  Icon:Brain,     gpu:'NVIDIA A100 (40GB PCIe)',hoursPerDay:'8',  numGpus:'1', deployment:'AWS',           sublabel:'NLP / report generation',
+  {key:'cad',   label:'Classification / triage', Icon:Target,  gpu:'NVIDIA RTX A6000',       hoursPerDay:'6',  numGpus:'1', deployment:'Local compute', sublabel:'Findings classification / triage',
+   tooltip:'RTX A6000 (300 W TDP) — typical dedicated workstation GPU for on-site classification/triage inference. 6 h/day reflects active clinical hours for real-time triage of incoming studies. Local deployment for low-latency PACS integration. Sources: Doo et al. Radiology 2024 (doi:10.1148/radiol.232030); Kocak et al. Insights Imaging 2025 (doi:10.1186/s13244-025-01962-2); NVIDIA DC Specs.'},
+  {key:'llm',   label:'Report generation',     Icon:Brain,     gpu:'NVIDIA A100 (40GB PCIe)',hoursPerDay:'8',  numGpus:'1', deployment:'AWS',           sublabel:'LLM / VLM report drafting',
    tooltip:'A100 40 GB PCIe (250 W TDP) — sufficient VRAM for medical LLM inference without full SXM power draw. 8 h/day = active clinical day. AWS reflects common cloud hosting of large language models for scalability and model update flexibility. Sources: Doo et al. Radiology 2024 (doi:10.1148/radiol.240320, LLM energy scaling); Kocak et al. Insights Imaging 2025 (doi:10.1186/s13244-025-01962-2).'},
-  {key:'recon', label:'Reconstruction AI',     Icon:Cpu,       gpu:'NVIDIA RTX A6000',       hoursPerDay:'12', numGpus:'1', deployment:'Local compute', sublabel:'MR/CT deep learning recon',
+  {key:'recon', label:'Reconstruction / denoising', Icon:Cpu,  gpu:'NVIDIA RTX A6000',       hoursPerDay:'12', numGpus:'1', deployment:'Local compute', sublabel:'MR/CT deep-learning recon',
    tooltip:'RTX A6000 (300 W TDP) for inline MR/CT reconstruction (denoising, acceleration, or synthetic imaging). 12 h/day accounts for reconstruction running during scanning hours plus overnight batch jobs. Local deployment required for low-latency integration with scanner console. Sources: Radiol 2023 (doi:10.1148/radiol.230441); Doo 2024 (doi:10.1148/radiol.232030).'},
-  {key:'seg',   label:'Segmentation AI',       Icon:BarChart3, gpu:'NVIDIA T4',              hoursPerDay:'4',  numGpus:'1', deployment:'Local compute', sublabel:'Organ / lesion U-Net',
+  {key:'seg',   label:'Segmentation',          Icon:BarChart3, gpu:'NVIDIA T4',              hoursPerDay:'4',  numGpus:'1', deployment:'Local compute', sublabel:'Organ / lesion U-Net',
    tooltip:'NVIDIA T4 (70 W TDP) — energy-efficient inference GPU well-matched to U-Net segmentation models. 4 h/day for scheduled batch processing (often overnight or off-peak). Local deployment for data-privacy compliance. T4 TDP significantly lower than data-centre GPUs — a good default for lightweight segmentation. Sources: Kocak et al. Insights Imaging 2025 (doi:10.1186/s13244-025-01962-2); Doo 2024 (doi:10.1148/radiol.232030); NVIDIA DC Specs.'},
   {key:'custom',label:'Custom',                Icon:Plus,      gpu:'NVIDIA A100 (80GB SXM4)',hoursPerDay:'8',  numGpus:'1', deployment:'Local compute', sublabel:'Set all parameters manually',
    tooltip:null},
@@ -1277,7 +1277,7 @@ function App() {
     cloudProvider: "Local compute",
     cloudRegion: "On-premise (Switzerland)",
     scannerState: "Standby",
-    // AI model — seeded from the library (CAD entry); all fields are editable.
+    // AI model — seeded from the library (classification/triage entry); all fields are editable.
     modelKey: 'cad',
     architecture: "CNN / ResNet",
     precision: "float32 (standard)",
