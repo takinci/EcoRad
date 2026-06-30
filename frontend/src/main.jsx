@@ -1,14 +1,15 @@
 import React, {useState, useMemo, useEffect, Suspense} from 'react';
 import {createRoot} from 'react-dom/client';
 import {flushSync} from 'react-dom';
-import {Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend} from 'chart.js';
+import {Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, PointElement, Tooltip, Legend} from 'chart.js';
 
 const Bar      = React.lazy(() => import('react-chartjs-2').then(m => ({default: m.Bar})));
 const Doughnut = React.lazy(() => import('react-chartjs-2').then(m => ({default: m.Doughnut})));
+const Scatter  = React.lazy(() => import('react-chartjs-2').then(m => ({default: m.Scatter})));
 import {Leaf, Brain, Download, Activity, Gauge, TrendingDown, Droplets, FileText, Trash2, Cpu, Car, TreePine, Plane, Factory, Zap, Target, AlertTriangle, BarChart3, Home, Flame, Lightbulb, Coffee, Monitor, Server, Database, Wifi, Cloud, Plus, ArrowRight, HardDrive, Globe, Heart, Scan} from 'lucide-react';
 import './styles.css';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, PointElement, Tooltip, Legend);
 
 // ── Reference tables ──────────────────────────────────────────────────────────
 
@@ -660,6 +661,62 @@ function computeAI(cloudProvider, region, model, precision, architecture, custom
   };
 }
 
+// Build a full AI result from a config object (the live `scen` or a saved benchmark
+// candidate) under a given department context. Shared by the AI dashboard and the
+// benchmark so both use identical math. Returns the computeAI object plus the derived
+// inference time and a lifetime-CO₂ roll-up convenient for comparison.
+function aiResultFor(cfg, region, customCi, equipment) {
+  const gpuPreset = GPU_PRESETS[cfg.trainGpu];
+  const trainH    = parseFloat(cfg.trainHours) || 0;
+  const trainN    = Math.max(1, parseInt(cfg.trainNumGpus) || 1);
+  const pue       = CLOUD[cfg.cloudProvider]?.pue ?? 1.5;
+  const trainKwh  = gpuPreset && trainH > 0 ? rnd(gpuPreset.tdpKw * trainN * trainH * pue, 1) : 0;
+  const lib = AI_MODEL_BY_KEY[cfg.modelKey] ?? AI_MODEL_LIBRARY[0];
+  const paramsM    = parseFloat(cfg.paramsM)    || lib.paramsM;
+  const dim        = cfg.dim || lib.dim;
+  const resolution = parseFloat(cfg.resolution) || lib.resolution;
+  const slices     = dim === '3D' ? (parseFloat(cfg.slices) || lib.slices) : 1;
+  const baseSlices = lib.dim === '3D' ? lib.slices : 1;
+  const basePixels = lib.resolution * lib.resolution * baseSlices;
+  const pixels     = resolution * resolution * slices;
+  const inferSecDerived = rnd(lib.inferSec * (paramsM / lib.paramsM) * (pixels / basePixels), 3);
+  const inferSecManual  = parseFloat(cfg.inferSec) > 0 ? parseFloat(cfg.inferSec) : null;
+  const inferSecAuto    = inferSecManual === null;
+  const model = {
+    gpuKw: lib.gpuKw, trainMwh: lib.trainMwh, embCo2Kg: lib.embCo2Kg,
+    paramsM, dim, resolution, slices,
+    inferSec:   inferSecManual ?? inferSecDerived,
+    accuracy:   Math.min(1, Math.max(0, (parseFloat(cfg.accuracyPct) || 0) / 100)),
+    accuracyMetric: cfg.accuracyMetric || lib.accuracyMetric,
+    scanTimeReductPct: Math.max(0, parseFloat(cfg.scanTimeReductPct) || 0),
+    lowValueReductPct: Math.max(0, parseFloat(cfg.lowValueReductPct) || 0),
+  };
+  const result = computeAI(cfg.cloudProvider, region, model, cfg.precision, cfg.architecture, customCi, equipment,
+    {trainKwh, testStudies: cfg.testStudies, deployMonths: cfg.deployMonths, cloudRegion: cfg.cloudRegion});
+  const lifetimeCo2 = rnd(result.training.kgCo2e + result.inference.kwhLifetime * result.cloudCi + result.embCo2KgTotal, 1);
+  return {...result, inferSecDerived, inferSecAuto, lifetimeCo2};
+}
+
+// The AI-model config fields snapshotted into a benchmark candidate (department context —
+// region, equipment, customCi — is held constant and applied at compute time).
+const AI_CFG_FIELDS = ['modelKey','architecture','precision','paramsM','dim','resolution','slices','inferSec',
+  'accuracyPct','accuracyMetric','scanTimeReductPct','lowValueReductPct',
+  'cloudProvider','cloudRegion','trainGpu','trainNumGpus','trainHours','testStudies','deployMonths'];
+function pickAiCfg(s) {
+  return AI_CFG_FIELDS.reduce((o, k) => (o[k] = s[k], o), {});
+}
+function benchCfgFromLib(key) {
+  const m = AI_MODEL_BY_KEY[key] ?? AI_MODEL_LIBRARY[0];
+  return {
+    id: `ref-${key}`, label: m.label, modelKey: key, architecture: m.architecture, precision: 'float32 (standard)',
+    paramsM: String(m.paramsM), dim: m.dim, resolution: String(m.resolution), slices: String(m.slices), inferSec: '',
+    accuracyPct: String(m.accuracyPct), accuracyMetric: m.accuracyMetric,
+    scanTimeReductPct: String(m.scanTimeReductPct), lowValueReductPct: String(m.lowValueReductPct),
+    cloudProvider: 'Local compute', cloudRegion: 'On-premise (Switzerland)',
+    trainGpu: '', trainNumGpus: '1', trainHours: '', testStudies: '500', deployMonths: '36',
+  };
+}
+
 function computeCloudCarbon(t) {
   const provData  = CLOUD_REGIONS[t.provider] ?? CLOUD_REGIONS['Local compute'];
   const regionCi  = provData.regions[t.region] ?? 0.3;
@@ -1255,6 +1312,14 @@ function App() {
   const [aiTab,         setAiTab]         = useState('model');
   const [trainExpanded, setTrainExpanded] = useState(false);
   const [modelExpanded, setModelExpanded] = useState(false);
+  // Scenario tab mode + AI model benchmark shortlist
+  const [benchMode,   setBenchMode]   = useState('intervention'); // 'intervention' | 'benchmark'
+  const [benchModels, setBenchModels] = useState(() => ['cad','seg3d','report'].map(benchCfgFromLib));
+  const addBenchModel = () => setBenchModels(list =>
+    list.length >= 6 ? list : [...list, {...pickAiCfg(scen), id: Date.now(),
+      label: `${AI_MODEL_BY_KEY[scen.modelKey]?.label ?? 'Model'} (current)`}]);
+  const removeBenchModel  = id => setBenchModels(list => list.filter(m => m.id !== id));
+  const updateBenchLabel  = (id, label) => setBenchModels(list => list.map(m => m.id === id ? {...m, label} : m));
   const [dashTab, setDashTab] = useState('equiv');
   const [equivScope, setEquivScope] = useState('scope2');
   const [landingAIOpen, setLandingAIOpen] = useState(false);
@@ -1346,40 +1411,31 @@ function App() {
   // Recalculate whenever settings change
   const dash     = useMemo(() => computeDashboard(settings.region, settings.timePeriod, settings.equipment, settings.customCi), [settings.region, settings.timePeriod, settings.equipment, settings.customCi]);
   const scenario = useMemo(() => computeScenario(scen.intervention, settings.region, settings.timePeriod, settings.equipment, settings.customCi, scen.cloudProvider, scen.scannerState), [scen.intervention, settings.region, settings.timePeriod, settings.equipment, settings.customCi, scen.cloudProvider, scen.scannerState]);
-  const ai       = useMemo(() => {
-    const gpuPreset   = GPU_PRESETS[scen.trainGpu];
-    const trainH      = parseFloat(scen.trainHours) || 0;
-    const trainN      = Math.max(1, parseInt(scen.trainNumGpus) || 1);
-    const pue         = CLOUD[scen.cloudProvider]?.pue ?? 1.5;
-    const trainKwh    = gpuPreset && trainH > 0 ? rnd(gpuPreset.tdpKw * trainN * trainH * pue, 1) : 0;
-    // Build the effective model spec: library defaults for non-edited fields (gpuKw,
-    // trainMwh, embCo2Kg) + the user's editable values for everything else.
-    const lib = AI_MODEL_BY_KEY[scen.modelKey] ?? AI_MODEL_LIBRARY[0];
-    const paramsM    = parseFloat(scen.paramsM)    || lib.paramsM;
-    const dim        = scen.dim || lib.dim;
-    const resolution = parseFloat(scen.resolution) || lib.resolution;
-    const slices     = dim === '3D' ? (parseFloat(scen.slices) || lib.slices) : 1;
-    // Physical inference-time scaling relative to the library entry's measured base:
-    // FLOPs/forward-pass ≈ params × input-elements (resolution² × slices). Relative,
-    // not absolute — anchored to a real measured datapoint, so no false precision.
-    const baseSlices = lib.dim === '3D' ? lib.slices : 1;
-    const basePixels = lib.resolution * lib.resolution * baseSlices;
-    const pixels     = resolution * resolution * slices;
-    const inferSecDerived = rnd(lib.inferSec * (paramsM / lib.paramsM) * (pixels / basePixels), 3);
-    const inferSecManual  = parseFloat(scen.inferSec) > 0 ? parseFloat(scen.inferSec) : null;
-    const inferSecAuto    = inferSecManual === null;
-    const model = {
-      gpuKw: lib.gpuKw, trainMwh: lib.trainMwh, embCo2Kg: lib.embCo2Kg,
-      paramsM, dim, resolution, slices,
-      inferSec:   inferSecManual ?? inferSecDerived,
-      accuracy:   Math.min(1, Math.max(0, (parseFloat(scen.accuracyPct) || 0) / 100)),
-      accuracyMetric: scen.accuracyMetric || lib.accuracyMetric,
-      scanTimeReductPct: Math.max(0, parseFloat(scen.scanTimeReductPct) || 0),
-      lowValueReductPct: Math.max(0, parseFloat(scen.lowValueReductPct) || 0),
-    };
-    const result = computeAI(scen.cloudProvider, settings.region, model, scen.precision, scen.architecture, settings.customCi, settings.equipment, {trainKwh, testStudies: scen.testStudies, deployMonths: scen.deployMonths, cloudRegion: scen.cloudRegion});
-    return {...result, inferSecDerived, inferSecAuto};
-  }, [scen, settings.region, settings.customCi, settings.equipment]);
+  const ai       = useMemo(() => aiResultFor(scen, settings.region, settings.customCi, settings.equipment),
+    [scen, settings.region, settings.customCi, settings.equipment]);
+
+  // Benchmark: every candidate computed under the SAME department context, so only the
+  // model varies. Pareto-efficient = no other candidate is both more accurate and lower-carbon.
+  const benchResults = useMemo(() => {
+    const rows = benchModels.map(cfg => {
+      const r = aiResultFor(cfg, settings.region, settings.customCi, settings.equipment);
+      return {
+        id: cfg.id, label: cfg.label, sizeLabel: r.modelSize, paramsM: r.paramsM,
+        accuracyPct: rnd(r.accuracy * 100, 1), accuracyMetric: r.accuracyMetric,
+        trainCo2: r.training.kgCo2e, kwhPerStudy: r.inference.kwhPerStudy,
+        netCo2: r.netKgCo2e, lifetimeCo2: r.lifetimeCo2, efficiency: r.efficiencyRatio,
+      };
+    });
+    rows.forEach(a => {
+      a.pareto = !rows.some(b => b.id !== a.id &&
+        b.accuracyPct >= a.accuracyPct && b.lifetimeCo2 <= a.lifetimeCo2 &&
+        (b.accuracyPct > a.accuracyPct || b.lifetimeCo2 < a.lifetimeCo2));
+    });
+    const minBy = key => rows.length ? Math.min(...rows.map(r => r[key])) : 0;
+    const maxBy = key => rows.length ? Math.max(...rows.map(r => r[key])) : 0;
+    return {rows, best: {trainCo2: minBy('trainCo2'), netCo2: minBy('netCo2'), lifetimeCo2: minBy('lifetimeCo2'),
+      accuracyPct: maxBy('accuracyPct'), efficiency: maxBy('efficiency')}};
+  }, [benchModels, settings.region, settings.customCi, settings.equipment]);
 
   const landingAIKwh = useMemo(() => {
     if (!landingAIOpen) return 0;
@@ -1605,7 +1661,7 @@ function App() {
   };
 
   const pages = ['landing','dashboard','ai','scenario','ecolabel'];
-  const PAGE_LABELS = {landing:'Home', dashboard:'Radiology Dashboard', ai:'AI Dashboard', scenario:'Scenario', ecolabel:'EcoLabel'};
+  const PAGE_LABELS = {landing:'Home', dashboard:'Radiology Dashboard', ai:'AI Dashboard', scenario:'Compare', ecolabel:'EcoLabel'};
 
   return (
     <>
@@ -2543,7 +2599,15 @@ function App() {
       {/* ── Scenario ── */}
       {page==='scenario' && (
         <main>
-          <h1>Scenario comparison</h1>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,marginBottom:16}}>
+            <h1 style={{margin:0}}>Comparison</h1>
+            <div className="aiTabs">
+              <button className={benchMode==='intervention'?'on':''} onClick={()=>setBenchMode('intervention')}>Interventions</button>
+              <button className={benchMode==='benchmark'?'on':''} onClick={()=>setBenchMode('benchmark')}>AI model benchmark</button>
+            </div>
+          </div>
+
+          {benchMode==='intervention' && (<>
           <div className="grid" style={{marginBottom:8}}>
             <Sel label="Intervention"         value={scen.intervention}  options={META.interventions}  onChange={v=>setS('intervention',v)}/>
             <Sel label={<span>Cloud provider {scenario.usesCloud ? <span className="badge">active</span> : <span style={{fontWeight:400,color:'#aaa',fontSize:11}}>not used by this intervention</span>}</span>}
@@ -2578,6 +2642,98 @@ function App() {
             <section><h2>Before vs after</h2><Suspense fallback={<div style={{height:200}}/>}><Bar data={chartScenario}/></Suspense></section>
           </div>
           <p className="note" style={{marginTop:12}}>Region: {settings.region} — {settings.timePeriod} figures. Change region or time period on the Input page.</p>
+          </>)}
+
+          {benchMode==='benchmark' && (<>
+          <p className="note" style={{marginBottom:8}}>
+            Compare candidate AI models on the accuracy-vs-carbon trade-off. Every candidate is evaluated under the
+            <strong> same department context</strong> ({settings.region}, your current equipment fleet) — only the model varies.
+          </p>
+          <p className="note" style={{marginBottom:16,fontSize:12}}>
+            Performance values are <strong>user-reported</strong>, not predicted by EcoRad — edit each candidate's reported metric on the AI dashboard before adding it. Configure a model on the AI dashboard, then add it here.
+          </p>
+
+          <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:16}}>
+            <button onClick={addBenchModel} disabled={benchModels.length>=6} style={{display:'inline-flex',alignItems:'center',gap:6,opacity:benchModels.length>=6?0.5:1}}>
+              <Plus size={14}/> Add current AI model
+            </button>
+            <button onClick={()=>setBenchModels(['cad','seg3d','report'].map(benchCfgFromLib))} style={{background:'#e8f5e9',color:'#2E7D32',boxShadow:'none',border:'1px dashed #a5d6a7'}}>
+              Reset to reference set
+            </button>
+            <span style={{fontSize:12,color:'#607d66'}}>{benchModels.length} / 6 candidates{benchModels.length>=6?' (max)':''}</span>
+          </div>
+
+          {benchResults.rows.length === 0 ? (
+            <p className="note">No candidates. Add the current AI dashboard model, or reset to the reference set.</p>
+          ) : (<>
+          <div style={{overflowX:'auto',marginBottom:24}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:13,minWidth:760}}>
+              <thead>
+                <tr style={{borderBottom:'2px solid #c8e6c9',color:'#607d66',textAlign:'left'}}>
+                  <th style={{padding:'8px 10px'}}>Candidate</th>
+                  <th style={{padding:'8px 10px'}}>Size</th>
+                  <th style={{padding:'8px 10px'}}>Reported</th>
+                  <th style={{padding:'8px 10px'}}>Training CO₂e</th>
+                  <th style={{padding:'8px 10px'}}>kWh/study</th>
+                  <th style={{padding:'8px 10px'}}>Net CO₂e/mo</th>
+                  <th style={{padding:'8px 10px'}}>Lifetime CO₂e</th>
+                  <th style={{padding:'8px 10px'}}>Efficiency</th>
+                  <th style={{padding:'8px 10px'}}/>
+                </tr>
+              </thead>
+              <tbody>
+                {benchResults.rows.map(r => {
+                  const best = benchResults.best;
+                  const hi = cond => cond ? {color:'#1b5e20',fontWeight:800} : {};
+                  return (
+                    <tr key={r.id} style={{borderBottom:'1px solid #eef7ee',background:r.pareto?'#f3faf3':'white'}}>
+                      <td style={{padding:'7px 10px'}}>
+                        {r.pareto && <span title="Pareto-efficient" style={{color:'#2E7D32',marginRight:4}}>★</span>}
+                        <input value={r.label} onChange={e=>updateBenchLabel(r.id,e.target.value)} style={{width:150,padding:'4px 6px',border:'1px solid #e0e0e0',borderRadius:8,fontSize:12}}/>
+                      </td>
+                      <td style={{padding:'7px 10px',color:'#607d66'}}>{r.paramsM.toLocaleString()}M</td>
+                      <td style={{padding:'7px 10px',...hi(r.accuracyPct===best.accuracyPct)}}>{r.accuracyPct}% <span style={{color:'#90a4ae',fontWeight:400,fontSize:11}}>{r.accuracyMetric}</span></td>
+                      <td style={{padding:'7px 10px',...hi(r.trainCo2===best.trainCo2)}}>{fmtCo2(r.trainCo2)}</td>
+                      <td style={{padding:'7px 10px'}}>{r.kwhPerStudy}</td>
+                      <td style={{padding:'7px 10px',...hi(r.netCo2===best.netCo2)}}>{r.netCo2}</td>
+                      <td style={{padding:'7px 10px',...hi(r.lifetimeCo2===best.lifetimeCo2)}}>{fmtCo2(r.lifetimeCo2)}</td>
+                      <td style={{padding:'7px 10px',...hi(r.efficiency===best.efficiency)}}>{r.efficiency}</td>
+                      <td style={{padding:'7px 10px'}}>
+                        <button onClick={()=>removeBenchModel(r.id)} title="Remove" style={{background:'none',color:'#aaa',padding:4,borderRadius:8,boxShadow:'none',lineHeight:1}}><Trash2 size={15}/></button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <section style={{marginBottom:16}}>
+            <h2 style={{marginBottom:4}}>Accuracy vs carbon</h2>
+            <p className="note" style={{marginBottom:12}}>Lower-left is worse, upper-left is best (high performance, low carbon). <strong style={{color:'#2E7D32'}}>★ green points</strong> are Pareto-efficient — no other candidate beats them on both axes.</p>
+            {(()=>{
+              const data = {datasets:[{
+                label:'Candidates',
+                data: benchResults.rows.map(r=>({x:r.lifetimeCo2, y:r.accuracyPct, _label:r.label})),
+                pointBackgroundColor: benchResults.rows.map(r=>r.pareto?'#2E7D32':'#b0bec5'),
+                pointBorderColor: benchResults.rows.map(r=>r.pareto?'#1b5e20':'#90a4ae'),
+                pointRadius: benchResults.rows.map(r=>r.pareto?8:6),
+                pointHoverRadius: 10,
+              }]};
+              const opts = {
+                responsive:true, maintainAspectRatio:false,
+                plugins:{legend:{display:false}, tooltip:{callbacks:{label: ctx => ` ${ctx.raw._label}: ${ctx.parsed.y}% · ${fmtCo2(ctx.parsed.x)} lifetime`}}},
+                scales:{
+                  x:{title:{display:true,text:'Lifetime CO₂e (kg)'}, beginAtZero:true},
+                  y:{title:{display:true,text:'Reported performance (%)'}},
+                },
+              };
+              return <div style={{height:320}}><Suspense fallback={<div style={{height:320}}/>}><Scatter data={data} options={opts}/></Suspense></div>;
+            })()}
+          </section>
+          <p className="note">Different reported metrics (AUC, Dice, SSIM…) are not directly comparable on the y-axis — compare like-for-like tasks. Carbon uses cloud CI; clinical savings use the {settings.region} grid.</p>
+          </>)}
+          </>)}
         </main>
       )}
 
